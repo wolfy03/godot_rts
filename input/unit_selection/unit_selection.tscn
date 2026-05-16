@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cwh2eb5hud7ca"]
+
+[ext_resource type="Script" path="res://input/unit_selection/unit_selection.gd" id="1_i6svs"]
+
+[node name="UnitSelection" type="Node2D"]
+script = ExtResource("1_i6svs")

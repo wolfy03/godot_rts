@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://djwhtmeln65rx"]
+
+[ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://units/base_units/base_enemy.tscn" id="1_kdlj3"]
+
+[node name="BigEnemy" unique_id=77647107 instance=ExtResource("1_kdlj3")]
+mass = 1000000.0
+max_health = 10000
+
+[node name="CollisionShape2D" parent="." index="0" unique_id=435926277]
+scale = Vector2(4, 4)
+
+[node name="UnitSprite" parent="." index="1" unique_id=53847988]
+scale = Vector2(4, 4)
+speed_scale = 0.5
+
+[node name="NavigationAgent" parent="." index="3" unique_id=98110127]
+radius = 100.0
+neighbor_distance = 150.0
+max_neighbors = 30
+max_speed = 100.0
+
+[node name="CollisionShape2D" parent="AttackRangeArea" parent_id_path=PackedInt32Array(1640689622) index="0" unique_id=1411447747]
+scale = Vector2(7, 7)
+
+[node name="CollisionShape2D" parent="AttackLeashRangeArea" parent_id_path=PackedInt32Array(1789702850) index="0" unique_id=642510402]
+scale = Vector2(9, 9)
+
+[node name="AttackState" parent="StateMachine" parent_id_path=PackedInt32Array(1288839195) index="2" unique_id=646017823]
+attack_damage = 100
+attack_cooldown = 1.0

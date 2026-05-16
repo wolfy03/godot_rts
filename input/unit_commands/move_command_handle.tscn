@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://2jvdtljjwthy"]
+
+[ext_resource type="Script" path="res://input/unit_commands/move_command_handle.gd" id="1_acr3r"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hut8k"]
+radius = 8.0
+
+[node name="MoveCommandHandle" type="Area2D"]
+script = ExtResource("1_acr3r")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+visible = false
+shape = SubResource("CircleShape2D_hut8k")

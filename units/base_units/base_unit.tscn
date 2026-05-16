@@ -1,0 +1,149 @@
+[gd_scene format=3 uid="uid://dr3dx0phgxkof"]
+
+[ext_resource type="Texture2D" uid="uid://beoxrckunlycv" path="res://units/base_units/unit.png" id="1_jynrv"]
+[ext_resource type="Script" uid="uid://cnox1d7ydrbq0" path="res://units/base_units/unit.gd" id="1_n14s1"]
+[ext_resource type="Texture2D" uid="uid://dvlfil400ykgj" path="res://units/base_units/unit_selected.png" id="3_7uq4n"]
+[ext_resource type="Script" uid="uid://dmhcuqhprgs37" path="res://units/states/state_machine.gd" id="4_dvoc7"]
+[ext_resource type="Script" uid="uid://c0picav4x304h" path="res://units/states/idle_state.gd" id="5_4ksry"]
+[ext_resource type="Script" uid="uid://d373movc3i8sy" path="res://units/states/move_state.gd" id="6_n0caq"]
+[ext_resource type="Script" uid="uid://d2m8y74heep05" path="res://units/states/attack_state.gd" id="7_pqb5e"]
+[ext_resource type="Script" uid="uid://bwdvkqus1vwlv" path="res://units/states/hold_position_state.gd" id="8_7snhb"]
+[ext_resource type="Script" uid="uid://c4f63j75f78dn" path="res://units/states/chase_state.gd" id="9_ke0u6"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_sfavt"]
+radius = 13.0
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xs1w1"]
+atlas = ExtResource("1_jynrv")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cr84b"]
+atlas = ExtResource("1_jynrv")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_46sl0"]
+atlas = ExtResource("1_jynrv")
+region = Rect2(0, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_emaiq"]
+atlas = ExtResource("1_jynrv")
+region = Rect2(32, 32, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_yxsik"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xs1w1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cr84b")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_46sl0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_emaiq")
+}],
+"loop": true,
+"name": &"Attack",
+"speed": 8.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_nt4ta"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_m2nmw"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_6o8fk"]
+radius = 150.0
+
+[node name="BaseUnit" type="RigidBody2D" unique_id=670265066]
+texture_filter = 1
+collision_layer = 3
+collision_mask = 7
+lock_rotation = true
+continuous_cd = 1
+script = ExtResource("1_n14s1")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=435926277]
+unique_name_in_owner = true
+visible = false
+scale = Vector2(0.75, 0.75)
+shape = SubResource("CircleShape2D_sfavt")
+
+[node name="UnitSprite" type="AnimatedSprite2D" parent="." unique_id=53847988]
+unique_name_in_owner = true
+scale = Vector2(0.75, 0.75)
+sprite_frames = SubResource("SpriteFrames_yxsik")
+animation = &"Attack"
+
+[node name="UnitSelectedSprite" type="Sprite2D" parent="." unique_id=301704044]
+unique_name_in_owner = true
+modulate = Color(0, 1, 0.184314, 1)
+scale = Vector2(1.5, 1.5)
+texture = ExtResource("3_7uq4n")
+
+[node name="NavigationAgent" type="NavigationAgent2D" parent="." unique_id=98110127]
+unique_name_in_owner = true
+path_desired_distance = 10.0
+target_desired_distance = 2.0
+path_max_distance = 15.0
+avoidance_enabled = true
+radius = 12.0
+neighbor_distance = 35.0
+max_neighbors = 8
+max_speed = 350.0
+avoidance_layers = 3
+avoidance_mask = 3
+
+[node name="AttackRangeArea" type="Area2D" parent="." unique_id=1640689622]
+unique_name_in_owner = true
+visible = false
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackRangeArea" unique_id=1411447747]
+scale = Vector2(2, 2)
+shape = SubResource("CircleShape2D_nt4ta")
+
+[node name="AttackLeashRangeArea" type="Area2D" parent="." unique_id=1789702850]
+visible = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackLeashRangeArea" unique_id=642510402]
+scale = Vector2(3, 3)
+shape = SubResource("CircleShape2D_m2nmw")
+
+[node name="EnemyDetectionArea" type="Area2D" parent="." unique_id=1918316980]
+unique_name_in_owner = true
+visible = false
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="EnemyDetectionArea" unique_id=56946426]
+shape = SubResource("CircleShape2D_6o8fk")
+
+[node name="StateMachine" type="Node2D" parent="." unique_id=1288839195]
+unique_name_in_owner = true
+script = ExtResource("4_dvoc7")
+initial_state_id = "IDLE_STATE"
+
+[node name="IdleState" type="Node2D" parent="StateMachine" unique_id=1121897770]
+script = ExtResource("5_4ksry")
+
+[node name="MoveState" type="Node2D" parent="StateMachine" unique_id=735626982]
+script = ExtResource("6_n0caq")
+
+[node name="AttackState" type="Node2D" parent="StateMachine" unique_id=646017823]
+script = ExtResource("7_pqb5e")
+attack_cooldown = 0.5
+
+[node name="HoldPositionState" type="Node2D" parent="StateMachine" unique_id=1726363815]
+script = ExtResource("8_7snhb")
+
+[node name="ChaseState" type="Node2D" parent="StateMachine" unique_id=1070172830]
+script = ExtResource("9_ke0u6")
+
+[connection signal="body_entered" from="AttackRangeArea" to="StateMachine/ChaseState" method="_on_attack_range_area_body_entered"]
+[connection signal="body_exited" from="AttackRangeArea" to="StateMachine/AttackState" method="_on_attack_range_area_body_exited"]
+[connection signal="body_exited" from="AttackLeashRangeArea" to="StateMachine/AttackState" method="_on_attack_leash_range_body_exited"]
+[connection signal="body_entered" from="EnemyDetectionArea" to="StateMachine/IdleState" method="_on_enemy_detection_area_body_entered"]
+[connection signal="body_entered" from="EnemyDetectionArea" to="StateMachine/MoveState" method="_on_enemy_detection_area_body_entered"]
