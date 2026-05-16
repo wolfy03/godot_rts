@@ -1,6 +1,6 @@
-extends Camera2D
+extends Camera3D
 
-@export var camera_move_speed: float = 500
+@export var camera_move_speed: float = 18
 @export var mouse_screen_edge_threshold_percentage: float = 0.01
 
 var _cam_move_direction_keys: Vector2
@@ -22,11 +22,11 @@ func _input(_event: InputEvent):
 		_cam_move_direction_keys.y = 1
 
 func _process(delta: float):
-	var view_port_size = get_viewport_rect().size
+	var view_port_size = get_viewport().size
 	var threshold = view_port_size.x * mouse_screen_edge_threshold_percentage
 	var mouse_pos = get_viewport().get_mouse_position()
 	
-	var half_size = view_port_size / 2
+	# var half_size = view_port_size / 2
 	var cam_move_direction_mouse = Vector2.ZERO
 	
 	if mouse_pos.x < threshold:
@@ -40,4 +40,14 @@ func _process(delta: float):
 		cam_move_direction_mouse.y += 1
 	
 	var move_dir = _cam_move_direction_keys + cam_move_direction_mouse
-	position += move_dir * delta * camera_move_speed
+	if move_dir.length_squared() > 1.0:
+		move_dir = move_dir.normalized()
+	
+	var right := global_transform.basis.x
+	var forward := -global_transform.basis.z
+	right.y = 0
+	forward.y = 0
+	right = right.normalized()
+	forward = forward.normalized()
+	
+	global_position += (right * move_dir.x + forward * -move_dir.y) * delta * camera_move_speed

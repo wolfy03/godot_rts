@@ -3,6 +3,6 @@
 [ext_resource type="Script" path="res://input/unit_commands/unit_move_command.gd" id="1_vya2n"]
 [ext_resource type="PackedScene" uid="uid://2jvdtljjwthy" path="res://input/unit_commands/move_command_handle.tscn" id="2_ntcp4"]
 
-[node name="UnitMoveCommand" type="Node2D"]
+[node name="UnitMoveCommand" type="Node"]
 script = ExtResource("1_vya2n")
 move_command_handle_scene = ExtResource("2_ntcp4")

@@ -5,15 +5,17 @@
 [ext_resource type="Script" path="res://input/camera_controls.gd" id="3_lbtg2"]
 [ext_resource type="PackedScene" uid="uid://dso33f6n4pbxj" path="res://input/hud/hud.tscn" id="4_72mkc"]
 
-[node name="Input" type="Node2D"]
+[node name="Input" type="Node"]
 
 [node name="UnitMoveCommand" parent="." instance=ExtResource("1_p6o0v")]
 
-[node name="UnitSelection" parent="." instance=ExtResource("2_q5whp")]
-
-[node name="Camera" type="Camera2D" parent="."]
-position = Vector2(592, 171)
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.573576, 0.819152, 0, -0.819152, 0.573576, 4, 14, 12)
+current = true
+fov = 55.0
 script = ExtResource("3_lbtg2")
+
+[node name="UnitSelection" parent="." instance=ExtResource("2_q5whp")]
 
 [node name="HUD" parent="." instance=ExtResource("4_72mkc")]
 

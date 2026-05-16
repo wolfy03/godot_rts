@@ -25,11 +25,11 @@ func _process_state(_delta: float):
 		_deactivate()
 		transition_to_state.emit(IdleState.ID, null)
 
-func _on_enemy_detection_area_body_entered(body: Node2D):
+func _on_enemy_detection_area_body_entered(body: Node3D):
 	if _is_active && _attack_move:
 		_deactivate()
 		transition_to_state.emit(ChaseState.ID, body)
 
 class MoveCommandData:
-	var target_position: Vector2
+	var target_position: Vector3
 	var attack_move: bool

@@ -1,7 +1,7 @@
 extends StateMachine.State
 class_name ChaseState
 
-@onready var attack_range_area: Area2D = %AttackRangeArea
+@onready var attack_range_area: Area3D = %AttackRangeArea
 
 const ID = "CHASE_STATE"
 
@@ -30,9 +30,9 @@ func _process_state(_delta: float):
 		return
 	
 	_unit.navigation_agent.target_position = _attack_target.global_position
-	look_at(_attack_target.global_position)
+	_unit._look_at_ground_position(_attack_target.global_position)
 
-func _on_attack_range_area_body_entered(body: Node2D):
+func _on_attack_range_area_body_entered(body: Node3D):
 	if _is_active && body == _attack_target:
 		_deactivate()
 		_unit.navigation_agent.target_position = global_position

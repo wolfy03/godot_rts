@@ -2,12 +2,12 @@
 
 [ext_resource type="Script" path="res://input/unit_commands/move_command_handle.gd" id="1_acr3r"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_hut8k"]
-radius = 8.0
+[sub_resource type="SphereShape3D" id="SphereShape3D_hut8k"]
+radius = 0.45
 
-[node name="MoveCommandHandle" type="Area2D"]
+[node name="MoveCommandHandle" type="Area3D"]
 script = ExtResource("1_acr3r")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 visible = false
-shape = SubResource("CircleShape2D_hut8k")
+shape = SubResource("SphereShape3D_hut8k")

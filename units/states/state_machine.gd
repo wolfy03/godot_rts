@@ -77,7 +77,7 @@ func transition_to_state(state_id: String, data):
 	var state: State = _states[_current_state_id]
 	state._activate(data)
 
-class State extends Node2D:
+class State extends Node3D:
 	signal transition_to_state(state_id: String, data)
 	
 	var _is_active: bool = false

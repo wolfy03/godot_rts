@@ -14,9 +14,13 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="SwarmRTS"
+config/name="RTS_test"
 run/main_scene="res://levels/test_level/test_level.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
+
+[autoload]
+
+MCPRuntime="*uid://12qsotlb7bw4"
 
 [debug]
 
@@ -29,6 +33,10 @@ window/size/viewport_height=1080
 window/size/mode=3
 window/stretch/mode="viewport"
 window/vsync/vsync_mode=0
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/auto_reload/plugin.cfg", "res://addons/godot_mcp_editor/plugin.cfg", "res://addons/godot_mcp_runtime/plugin.cfg")
 
 [input]
 
