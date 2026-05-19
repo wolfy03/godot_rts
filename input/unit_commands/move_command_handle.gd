@@ -10,7 +10,8 @@ var _sphere: SphereShape3D
 var _arrived_units: Dictionary = {}
 
 func _ready():
-	_sphere = collision_shape.shape
+	_sphere = collision_shape.shape.duplicate()
+	collision_shape.shape = _sphere
 	_sphere.radius = 0.45
 	
 	body_entered.connect(_on_body_entered)
@@ -47,21 +48,26 @@ func _not_all_units_fully_enclosed() -> bool:
 			
 	return false
 
-func move_selected_units(
-	selected_units: Dictionary, 
-	click_position: Vector3,
-	attack_move: bool
-):
-	global_position = click_position
+func move_selected_units(selected_units: Dictionary,
+						 click_position: Vector3,
+						 attack_move: bool):
+	position = click_position
 	_selected_units = selected_units.duplicate()
 	
-	var top_left: Vector3 = Vector3.INF
-	var bottom_right: Vector3 = -Vector3.INF
+	var top_left: Vector3 = Vector3.ZERO
+	var bottom_right: Vector3 = Vector3.ZERO
+	var first_unit: bool = true
 	
 	for unit: Unit in _selected_units.values():
 		unit.tree_exiting.connect(_remove_dead_unit.bind(unit))
 		
 		var pos = unit.global_position
+		
+		if first_unit:
+			top_left = pos
+			bottom_right = pos
+			first_unit = false
+			continue
 		
 		if pos.x < top_left.x:
 			top_left.x = pos.x
@@ -73,18 +79,23 @@ func move_selected_units(
 			bottom_right.z = pos.z
 
 	var selection_center = (bottom_right + top_left) / 2
-	selection_center.y = global_position.y
-	var center_click_diff = (selection_center - global_position).length()
-	_click_is_inside = center_click_diff < (bottom_right - top_left).length()
+	selection_center.y = click_position.y
+	var center_click_diff = (selection_center - click_position).length()
+	
+	var box_length = 0.0
+	if not first_unit:
+		box_length = (bottom_right - top_left).length()
+		
+	_click_is_inside = center_click_diff < box_length
 	
 	for unit: Unit in _selected_units.values():
 		var target_unit_pos: Vector3
 		
 		if _click_is_inside:
-			target_unit_pos = global_position
+			target_unit_pos = click_position
 		else:
-			target_unit_pos = global_position + unit.global_position - selection_center
-			target_unit_pos.y = global_position.y
+			target_unit_pos = click_position + unit.global_position - selection_center
+			target_unit_pos.y = click_position.y
 		
 		var data: MoveState.MoveCommandData = MoveState.MoveCommandData.new()
 		data.target_position = target_unit_pos

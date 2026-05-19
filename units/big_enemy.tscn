@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://units/base_units/base_enemy.tscn" id="1_kdlj3"]
 
 [node name="BigEnemy" unique_id=77647107 instance=ExtResource("1_kdlj3")]
-scale = Vector3(2.4, 2.4, 2.4)
+transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 0, 0, 0)
 max_health = 10000
 
 [node name="NavigationAgent" parent="." index="3" unique_id=98110127]

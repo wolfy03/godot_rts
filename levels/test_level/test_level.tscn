@@ -108,5 +108,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 1, -6)
 collision_mask = 3
 
 [node name="BigEnemy" parent="EnemiesContainer" unique_id=320224853 instance=ExtResource("4_qrnxu")]
-transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 11, 0, -4)
+transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 11, 1, -4)
 collision_mask = 3
