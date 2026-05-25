@@ -4,49 +4,12 @@ class_name MoveCommandHandle
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 
 var _selected_units: Dictionary
-
 var _click_is_inside: bool
-var _sphere: SphereShape3D
-var _arrived_units: Dictionary = {}
 
 func _ready():
-	_sphere = collision_shape.shape.duplicate()
-	collision_shape.shape = _sphere
-	_sphere.radius = 0.45
-	
-	body_entered.connect(_on_body_entered)
-
-func _on_body_entered(body: Node3D):
-	if !_click_is_inside:
-		return
-	
-	if not (body is Unit) || !_selected_units.has(body.get_instance_id()):
-		return
-	
-	var unit: Unit = body
-	unit.navigation_agent.target_position = unit.global_position
-	
-	_arrived_units[body.get_instance_id()] = unit
-	
-	if _arrived_units.size() >= _selected_units.size():
-		queue_free()
-		return
-	
-	_resize_collision_circle()
-	
-func _resize_collision_circle():
-	while _not_all_units_fully_enclosed():
-		_sphere.radius += 0.1
-	
-func _not_all_units_fully_enclosed() -> bool:
-	for unit: Unit in _arrived_units.values():
-		var unit_shape: SphereShape3D = unit.colission_shape.shape
-		var dist = global_position.distance_to(unit.global_position)
-		
-		if dist + unit_shape.radius > _sphere.radius:
-			return true
-			
-	return false
+	# Vogel Spiral 방식에서는 Area3D 충돌 감지가 필요 없으므로
+	# CollisionShape 초기화 및 body_entered 연결을 제거합니다.
+	pass
 
 func move_selected_units(selected_units: Dictionary,
 						 click_position: Vector3,
@@ -59,6 +22,9 @@ func move_selected_units(selected_units: Dictionary,
 	var first_unit: bool = true
 	
 	for unit: Unit in _selected_units.values():
+		# queue_free() 전에 연결하므로 여기서는 안전하지만,
+		# 어차피 queue_free() 직전까지만 살아있으면 되므로 연결 자체가 불필요.
+		# 단, 유닛이 루프 도중 사라지는 엣지케이스 방어용으로 유지.
 		unit.tree_exiting.connect(_remove_dead_unit.bind(unit))
 		
 		var pos = unit.global_position
@@ -88,12 +54,36 @@ func move_selected_units(selected_units: Dictionary,
 		
 	_click_is_inside = center_click_diff < box_length
 	
+	var unit_index = 0
+	
 	for unit: Unit in _selected_units.values():
+		# queue_free() 직전이므로 이 시점에 유닛이 소멸했을 가능성 방어
+		if not is_instance_valid(unit):
+			continue
+		
 		var target_unit_pos: Vector3
 		
 		if _click_is_inside:
-			target_unit_pos = click_position
+			var r = 0.45
+			if is_instance_valid(unit.navigation_agent):
+				r = unit.navigation_agent.radius
+			
+			if unit_index == 0:
+				# 첫 번째 유닛은 클릭 지점 정중앙
+				target_unit_pos = click_position
+			else:
+				# Vogel's Spiral (해바라기 씨앗 패턴)
+				# θ = n × 137.5° (황금각, 라디안: 2.39996...)
+				# R = sqrt(n) × (유닛 반경 × 1.5)  ← sqrt로 균일 밀도 보장
+				var golden_angle: float = 2.39996
+				var theta: float = unit_index * golden_angle
+				var spiral_radius: float = sqrt(float(unit_index)) * (r * 1.5)
+				target_unit_pos = click_position + Vector3(cos(theta), 0.0, sin(theta)) * spiral_radius
+			
+			target_unit_pos.y = click_position.y
+			unit_index += 1
 		else:
+			# 클릭 지점이 선택 영역 밖 → 대형 유지 이동 (기존 오프셋 방식)
 			target_unit_pos = click_position + unit.global_position - selection_center
 			target_unit_pos.y = click_position.y
 		
@@ -101,14 +91,19 @@ func move_selected_units(selected_units: Dictionary,
 		data.target_position = target_unit_pos
 		data.attack_move = attack_move
 		unit.state_machine.transition_to_state(MoveState.ID, data)
+	
+	# 목표 할당 완료 → 이 핸들 객체는 역할 종료, 메모리 해제
+	queue_free()
 
 func remove_units(units: Dictionary):
+	# queue_free() 이후 외부에서 호출될 수 있으므로 유효성 체크
+	if not is_instance_valid(self):
+		return
 	for unit_id in units.keys():
 		_selected_units.erase(unit_id)
-	
-	if _selected_units.is_empty():
-		queue_free()
 
 func _remove_dead_unit(unit: Unit):
+	# queue_free() 이후 시그널이 지연 발화될 수 있으므로 방어
+	if not is_instance_valid(self):
+		return
 	_selected_units.erase(unit.get_instance_id())
-	_arrived_units.erase(unit.get_instance_id())
