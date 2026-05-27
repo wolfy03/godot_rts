@@ -1,109 +1,157 @@
 extends Area3D
 class_name MoveCommandHandle
 
-@onready var collision_shape: CollisionShape3D = $CollisionShape3D
+const COVER_SEARCH_RADIUS := 2.5
+const FORMATION_SPACING_MULTIPLIER := 1.5
+const DEFAULT_UNIT_RADIUS := 0.45
+const GOLDEN_ANGLE_RADIANS := 2.39996
 
-var _selected_units: Dictionary
-var _click_is_inside: bool
-
-func _ready():
-	# Vogel Spiral 방식에서는 Area3D 충돌 감지가 필요 없으므로
-	# CollisionShape 초기화 및 body_entered 연결을 제거합니다.
-	pass
+var _selected_units: Dictionary = {}
 
 func move_selected_units(selected_units: Dictionary,
 						 click_position: Vector3,
-						 attack_move: bool):
+						 attack_move: bool) -> void:
 	position = click_position
 	_selected_units = selected_units.duplicate()
 	
-	var top_left: Vector3 = Vector3.ZERO
-	var bottom_right: Vector3 = Vector3.ZERO
-	var first_unit: bool = true
+	var clicked_cover := _find_cover_near(click_position)
+	if clicked_cover != null:
+		_send_units_to_cover(clicked_cover)
+		queue_free()
+		return
 	
-	for unit: Unit in _selected_units.values():
-		# queue_free() 전에 연결하므로 여기서는 안전하지만,
-		# 어차피 queue_free() 직전까지만 살아있으면 되므로 연결 자체가 불필요.
-		# 단, 유닛이 루프 도중 사라지는 엣지케이스 방어용으로 유지.
-		unit.tree_exiting.connect(_remove_dead_unit.bind(unit))
-		
-		var pos = unit.global_position
-		
-		if first_unit:
-			top_left = pos
-			bottom_right = pos
-			first_unit = false
-			continue
-		
-		if pos.x < top_left.x:
-			top_left.x = pos.x
-		if pos.x > bottom_right.x:
-			bottom_right.x = pos.x
-		if pos.z < top_left.z:
-			top_left.z = pos.z
-		if pos.z > bottom_right.z:
-			bottom_right.z = pos.z
-
-	var selection_center = (bottom_right + top_left) / 2
+	var selection_bounds := _get_selection_bounds()
+	var selection_center := (selection_bounds.min_position + selection_bounds.max_position) * 0.5
 	selection_center.y = click_position.y
-	var center_click_diff = (selection_center - click_position).length()
 	
-	var box_length = 0.0
-	if not first_unit:
-		box_length = (bottom_right - top_left).length()
-		
-	_click_is_inside = center_click_diff < box_length
-	
-	var unit_index = 0
+	var click_is_inside_selection := _is_click_inside_selection(selection_bounds, selection_center, click_position)
+	var formation_index := 0
 	
 	for unit: Unit in _selected_units.values():
-		# queue_free() 직전이므로 이 시점에 유닛이 소멸했을 가능성 방어
 		if not is_instance_valid(unit):
 			continue
 		
-		var target_unit_pos: Vector3
+		var target_position := _get_target_position_for_unit(
+			unit,
+			click_position,
+			selection_center,
+			click_is_inside_selection,
+			formation_index
+		)
 		
-		if _click_is_inside:
-			var r = 0.45
-			if is_instance_valid(unit.navigation_agent):
-				r = unit.navigation_agent.radius
-			
-			if unit_index == 0:
-				# 첫 번째 유닛은 클릭 지점 정중앙
-				target_unit_pos = click_position
-			else:
-				# Vogel's Spiral (해바라기 씨앗 패턴)
-				# θ = n × 137.5° (황금각, 라디안: 2.39996...)
-				# R = sqrt(n) × (유닛 반경 × 1.5)  ← sqrt로 균일 밀도 보장
-				var golden_angle: float = 2.39996
-				var theta: float = unit_index * golden_angle
-				var spiral_radius: float = sqrt(float(unit_index)) * (r * 1.5)
-				target_unit_pos = click_position + Vector3(cos(theta), 0.0, sin(theta)) * spiral_radius
-			
-			target_unit_pos.y = click_position.y
-			unit_index += 1
-		else:
-			# 클릭 지점이 선택 영역 밖 → 대형 유지 이동 (기존 오프셋 방식)
-			target_unit_pos = click_position + unit.global_position - selection_center
-			target_unit_pos.y = click_position.y
-		
-		var data: MoveState.MoveCommandData = MoveState.MoveCommandData.new()
-		data.target_position = target_unit_pos
-		data.attack_move = attack_move
-		unit.state_machine.transition_to_state(MoveState.ID, data)
+		_issue_move_order(unit, target_position, attack_move)
+		if click_is_inside_selection:
+			formation_index += 1
 	
-	# 목표 할당 완료 → 이 핸들 객체는 역할 종료, 메모리 해제
 	queue_free()
 
-func remove_units(units: Dictionary):
-	# queue_free() 이후 외부에서 호출될 수 있으므로 유효성 체크
+func remove_units(units: Dictionary) -> void:
 	if not is_instance_valid(self):
 		return
+	
 	for unit_id in units.keys():
 		_selected_units.erase(unit_id)
 
-func _remove_dead_unit(unit: Unit):
-	# queue_free() 이후 시그널이 지연 발화될 수 있으므로 방어
+func _remove_dead_unit(unit: Unit) -> void:
 	if not is_instance_valid(self):
 		return
+	
 	_selected_units.erase(unit.get_instance_id())
+
+func _find_cover_near(target_position: Vector3) -> Cover:
+	for unit: Unit in _selected_units.values():
+		if is_instance_valid(unit):
+			return unit.find_nearest_cover_to(target_position, COVER_SEARCH_RADIUS)
+	
+	return null
+
+func _send_units_to_cover(cover: Cover) -> void:
+	for unit: Unit in _selected_units.values():
+		if not is_instance_valid(unit):
+			continue
+		
+		_clear_unit_command_state(unit)
+		unit.state_machine.transition_to_state(TakeCoverState.ID, cover)
+
+func _get_selection_bounds() -> SelectionBounds:
+	var bounds := SelectionBounds.new()
+	
+	for unit: Unit in _selected_units.values():
+		if not is_instance_valid(unit):
+			continue
+		
+		bounds.include_position(unit.global_position)
+		_connect_unit_exit_signal(unit)
+	
+	return bounds
+
+func _connect_unit_exit_signal(unit: Unit) -> void:
+	var remove_dead_unit := _remove_dead_unit.bind(unit)
+	if not unit.tree_exiting.is_connected(remove_dead_unit):
+		unit.tree_exiting.connect(remove_dead_unit)
+
+func _is_click_inside_selection(bounds: SelectionBounds, selection_center: Vector3, click_position: Vector3) -> bool:
+	if not bounds.has_position:
+		return false
+	
+	var selection_size := bounds.max_position - bounds.min_position
+	var selection_radius := selection_size.length()
+	var click_distance := selection_center.distance_to(click_position)
+	return click_distance < selection_radius
+
+func _get_target_position_for_unit(
+	unit: Unit,
+	click_position: Vector3,
+	selection_center: Vector3,
+	click_is_inside_selection: bool,
+	formation_index: int
+) -> Vector3:
+	var target_position: Vector3
+	
+	if click_is_inside_selection:
+		target_position = click_position + _get_vogel_spiral_offset(unit, formation_index)
+	else:
+		target_position = click_position + unit.global_position - selection_center
+	
+	target_position.y = click_position.y
+	return target_position
+
+func _get_vogel_spiral_offset(unit: Unit, formation_index: int) -> Vector3:
+	if formation_index == 0:
+		return Vector3.ZERO
+	
+	var unit_radius := DEFAULT_UNIT_RADIUS
+	if is_instance_valid(unit.navigation_agent):
+		unit_radius = unit.navigation_agent.radius
+	
+	var theta := float(formation_index) * GOLDEN_ANGLE_RADIANS
+	var radius := sqrt(float(formation_index)) * unit_radius * FORMATION_SPACING_MULTIPLIER
+	return Vector3(cos(theta), 0.0, sin(theta)) * radius
+
+func _issue_move_order(unit: Unit, target_position: Vector3, attack_move: bool) -> void:
+	var data := MoveState.MoveCommandData.new()
+	data.target_position = target_position
+	data.attack_move = attack_move
+	unit.state_machine.transition_to_state(MoveState.ID, data)
+
+func _clear_unit_command_state(unit: Unit) -> void:
+	unit.last_move_command_data = null
+	unit.hold_position_enabled = false
+	unit.clear_cover()
+
+class SelectionBounds:
+	var min_position: Vector3 = Vector3.ZERO
+	var max_position: Vector3 = Vector3.ZERO
+	var has_position: bool = false
+	
+	func include_position(position: Vector3) -> void:
+		if not has_position:
+			min_position = position
+			max_position = position
+			has_position = true
+			return
+		
+		min_position.x = minf(min_position.x, position.x)
+		min_position.z = minf(min_position.z, position.z)
+		max_position.x = maxf(max_position.x, position.x)
+		max_position.z = maxf(max_position.z, position.z)

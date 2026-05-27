@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://machinegun_proj_001"]
+
+[ext_resource type="Script" uid="uid://buob3vjlxa7vk" path="res://assets/projectiles/projectile.gd" id="1_projectile"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mg"]
+albedo_color = Color(1.0, 0.35, 0.1, 1)
+emission_enabled = true
+emission = Color(1.0, 0.25, 0.05, 1)
+emission_energy_multiplier = 2.5
+
+[sub_resource type="SphereMesh" id="SphereMesh_mg"]
+material = SubResource("StandardMaterial3D_mg")
+radius = 0.06
+height = 0.12
+
+[node name="MachinegunProjectile" type="Node3D"]
+script = ExtResource("1_projectile")
+speed = 30.0
+hit_distance = 0.25
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_mg")

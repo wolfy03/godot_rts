@@ -1,21 +1,26 @@
 [gd_scene format=3 uid="uid://d3lbq40fkm8ag"]
 
-[ext_resource type="PackedScene" uid="uid://dr3dx0phgxkof" path="res://assets/unit/base_units/base_unit.tscn" id="1_mj5b0"]
+[ext_resource type="PackedScene" uid="uid://dr3dx0phgxkof" path="res://units/base_units/base_unit.tscn" id="1_mj5b0"]
 [ext_resource type="PackedScene" uid="uid://d3qhbxkjqiwo2" path="res://input/input.tscn" id="2_wmwms"]
-[ext_resource type="Resource" path="res://assets/equipment/sniper_rifle.tres" id="3_18dot"]
-[ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://assets/unit/base_units/base_enemy.tscn" id="3_kvasj"]
-[ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="4_8th66"]
-[ext_resource type="PackedScene" uid="uid://djwhtmeln65rx" path="res://assets/unit/big_enemy.tscn" id="4_qrnxu"]
-[ext_resource type="Resource" path="res://assets/equipment/machine_gun.tres" id="4_v1acv"]
-[ext_resource type="PackedScene" path="res://assets/unit/cover.tscn" id="5_cover"]
+[ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://units/base_units/base_enemy.tscn" id="3_kvasj"]
+[ext_resource type="PackedScene" uid="uid://djwhtmeln65rx" path="res://units/big_enemy.tscn" id="4_qrnxu"]
+
 [sub_resource type="NavigationMesh" id="NavigationMesh_bk1f5"]
-vertices = PackedVector3Array(-24.5, 1, -25.5, -24.5, 1, 23.5, 24.5, 1, 23.5, 24.5, 1, -25.5)
-polygons = [PackedInt32Array(3, 2, 0), PackedInt32Array(0, 2, 1)]
+vertices = PackedVector3Array(-24, 0, -18, 24, 0, -18, 24, 0, 18, -24, 0, 18)
+polygons = [PackedInt32Array(0, 1, 2, 3)]
 agent_height = 1.0
 agent_radius = 0.45
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qo0ko"]
-albedo_color = Color(0.25288963, 0.41866326, 0.15907395, 1)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.27, 0.45, 0.26, 1)
+roughness = 0.85
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector2(48, 36)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(48, 0.1, 36)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
 albedo_color = Color(0.38, 0.34, 0.3, 1)
@@ -29,12 +34,16 @@ size = Vector3(48, 1.2, 0.35)
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="." unique_id=534721880]
 navigation_mesh = SubResource("NavigationMesh_bk1f5")
 
-[node name="Ground" type="CSGBox3D" parent="NavigationRegion3D" unique_id=1775832771]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1)
-material_override = SubResource("StandardMaterial3D_qo0ko")
+[node name="Ground" type="StaticBody3D" parent="." unique_id=2057812480]
 collision_layer = 0
 collision_mask = 0
-size = Vector3(50, 1, 50)
+
+[node name="GroundMesh" type="MeshInstance3D" parent="Ground" unique_id=2029584196]
+mesh = SubResource("PlaneMesh_ground")
+
+[node name="GroundCollision" type="CollisionShape3D" parent="Ground" unique_id=1398165137]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+shape = SubResource("BoxShape3D_ground")
 
 [node name="NorthWall" type="MeshInstance3D" parent="." unique_id=1706368868]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -18)
@@ -60,77 +69,56 @@ light_energy = 2.5
 
 [node name="Input" parent="." unique_id=419650762 instance=ExtResource("2_wmwms")]
 
-[node name="CoversContainer" type="Node3D" parent="."]
-
-[node name="CoverHigh" parent="CoversContainer" instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 4)
-grade = 2
-
-[node name="CoverMedium" parent="CoversContainer" instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
-grade = 1
-
-[node name="CoverLow" parent="CoversContainer" instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 4)
-grade = 0
-
 [node name="UnitsContainer" type="Node3D" parent="." unique_id=625152519]
 
 [node name="Unit1" parent="UnitsContainer" unique_id=1554288225 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1, 8.991632)
-equipped_weapon = ExtResource("3_18dot")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 4)
 
 [node name="Unit2" parent="UnitsContainer" unique_id=1304184050 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 1, 10.241632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 5.25)
 
 [node name="Unit3" parent="UnitsContainer" unique_id=488343645 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 1, 8.991632)
-equipped_weapon = ExtResource("4_v1acv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 4)
 
 [node name="Unit4" parent="UnitsContainer" unique_id=1160986755 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1, 10.241632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 5.25)
 
 [node name="Unit5" parent="UnitsContainer" unique_id=2077932737 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 1, 8.991632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 4)
 
 [node name="Unit6" parent="UnitsContainer" unique_id=599759847 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 1, 10.241632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 5.25)
 
 [node name="Unit7" parent="UnitsContainer" unique_id=485624168 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 8.991632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
 
 [node name="Unit8" parent="UnitsContainer" unique_id=2045878864 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 10.241632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 5.25)
 
 [node name="Unit9" parent="UnitsContainer" unique_id=1214754750 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1, 8.991632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 4)
 
 [node name="Unit10" parent="UnitsContainer" unique_id=270371473 instance=ExtResource("1_mj5b0")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1, 10.241632)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 5.25)
 
 [node name="EnemiesContainer" type="Node3D" parent="." unique_id=1312816304]
 
 [node name="Enemy1" parent="EnemiesContainer" unique_id=814212044 instance=ExtResource("3_kvasj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 1, -5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, -5)
 collision_mask = 3
-equipped_weapon = ExtResource("4_8th66")
 
 [node name="Enemy2" parent="EnemiesContainer" unique_id=532289714 instance=ExtResource("3_kvasj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 1, -6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 0, -6)
 collision_mask = 3
-equipped_weapon = ExtResource("4_8th66")
 
 [node name="Enemy3" parent="EnemiesContainer" unique_id=1633458814 instance=ExtResource("3_kvasj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 1, -5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, -5)
 collision_mask = 3
-equipped_weapon = ExtResource("4_8th66")
 
 [node name="Enemy4" parent="EnemiesContainer" unique_id=1941348179 instance=ExtResource("3_kvasj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 1, -6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0, -6)
 collision_mask = 3
-equipped_weapon = ExtResource("4_8th66")
 
 [node name="BigEnemy" parent="EnemiesContainer" unique_id=320224853 instance=ExtResource("4_qrnxu")]
-transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 11, 1, -4)
+transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 11, 0, -4)
 collision_mask = 3
-equipped_weapon = ExtResource("4_8th66")

@@ -1,0 +1,147 @@
+[gd_scene format=3 uid="uid://dr3dx0phgxkof"]
+
+[ext_resource type="Script" uid="uid://cnox1d7ydrbq0" path="res://assets/unit/base_units/unit.gd" id="1_n14s1"]
+[ext_resource type="Script" uid="uid://dmhcuqhprgs37" path="res://assets/states/state_machine.gd" id="2_dvoc7"]
+[ext_resource type="Script" uid="uid://c0picav4x304h" path="res://assets/states/idle_state.gd" id="3_4ksry"]
+[ext_resource type="Script" uid="uid://d373movc3i8sy" path="res://assets/states/move_state.gd" id="4_n0caq"]
+[ext_resource type="Script" uid="uid://d2m8y74heep05" path="res://assets/states/attack_state.gd" id="5_pqb5e"]
+[ext_resource type="Script" uid="uid://bwdvkqus1vwlv" path="res://assets/states/hold_position_state.gd" id="6_7snhb"]
+[ext_resource type="Script" uid="uid://c4f63j75f78dn" path="res://assets/states/chase_state.gd" id="7_ke0u6"]
+[ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="8_rifle"]
+[ext_resource type="Script" uid="uid://bawarbyy1oamq" path="res://assets/states/take_cover_state.gd" id="9_tc"]
+[ext_resource type="Texture2D" uid="uid://v617ubq8frct" path="res://assets/unit/shield.png" id="10_shield"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_body"]
+radius = 0.38
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_unit"]
+albedo_color = Color(0.18, 0.42, 0.9, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_unit"]
+material = SubResource("StandardMaterial3D_unit")
+radius = 0.35
+height = 0.9
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_selection"]
+albedo_color = Color(0, 1, 0.2, 1)
+
+[sub_resource type="TorusMesh" id="TorusMesh_selection"]
+material = SubResource("StandardMaterial3D_selection")
+inner_radius = 0.48
+outer_radius = 0.55
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_attack"]
+radius = 10.0
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_leash"]
+radius = 13.0
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_detection"]
+radius = 12.0
+
+[node name="BaseUnit" type="CharacterBody3D" unique_id=670265066]
+collision_layer = 2
+collision_mask = 6
+script = ExtResource("1_n14s1")
+equipped_weapon = ExtResource("8_rifle")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=435926277]
+unique_name_in_owner = true
+shape = SubResource("SphereShape3D_body")
+
+[node name="UnitMesh" type="MeshInstance3D" parent="." unique_id=53847988]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+mesh = SubResource("CapsuleMesh_unit")
+
+[node name="UnitSelectedSprite" type="MeshInstance3D" parent="." unique_id=301704044]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, 0)
+visible = false
+mesh = SubResource("TorusMesh_selection")
+
+[node name="StatusIndicatorSpace" type="Node3D" parent="." unique_id=1541498912]
+unique_name_in_owner = true
+top_level = true
+visible = false
+
+[node name="CoverIndicator" type="Sprite3D" parent="StatusIndicatorSpace" unique_id=35503351]
+unique_name_in_owner = true
+visible = false
+pixel_size = 0.0001
+billboard = 1
+no_depth_test = true
+fixed_size = true
+texture = ExtResource("10_shield")
+
+[node name="NavigationAgent" type="NavigationAgent3D" parent="." unique_id=98110127]
+unique_name_in_owner = true
+path_desired_distance = 0.3
+target_desired_distance = 0.25
+path_max_distance = 1.0
+avoidance_enabled = true
+radius = 0.45
+neighbor_distance = 1.5
+max_neighbors = 8
+max_speed = 5.0
+avoidance_layers = 3
+avoidance_mask = 3
+debug_enabled = true
+debug_path_custom_color = Color(0.12156863, 0.99607843, 0.5294118, 0.89411765)
+
+[node name="AttackRangeArea" type="Area3D" parent="." unique_id=1640689622]
+unique_name_in_owner = true
+visible = false
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AttackRangeArea" unique_id=1411447747]
+shape = SubResource("SphereShape3D_attack")
+
+[node name="AttackLeashRangeArea" type="Area3D" parent="." unique_id=1789702850]
+unique_name_in_owner = true
+visible = false
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AttackLeashRangeArea" unique_id=642510402]
+shape = SubResource("SphereShape3D_leash")
+
+[node name="EnemyDetectionArea" type="Area3D" parent="." unique_id=1918316980]
+unique_name_in_owner = true
+visible = false
+collision_layer = 0
+collision_mask = 4
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EnemyDetectionArea" unique_id=56946426]
+shape = SubResource("SphereShape3D_detection")
+
+[node name="StateMachine" type="Node3D" parent="." unique_id=1288839195]
+unique_name_in_owner = true
+script = ExtResource("2_dvoc7")
+initial_state_id = "IDLE_STATE"
+
+[node name="IdleState" type="Node3D" parent="StateMachine" unique_id=1121897770]
+script = ExtResource("3_4ksry")
+
+[node name="MoveState" type="Node3D" parent="StateMachine" unique_id=735626982]
+script = ExtResource("4_n0caq")
+
+[node name="AttackState" type="Node3D" parent="StateMachine" unique_id=646017823]
+script = ExtResource("5_pqb5e")
+
+[node name="HoldPositionState" type="Node3D" parent="StateMachine" unique_id=1726363815]
+script = ExtResource("6_7snhb")
+
+[node name="ChaseState" type="Node3D" parent="StateMachine" unique_id=1070172830]
+script = ExtResource("7_ke0u6")
+
+[node name="TakeCoverState" type="Node3D" parent="StateMachine" unique_id=886297752]
+script = ExtResource("9_tc")
+
+[connection signal="body_entered" from="AttackRangeArea" to="StateMachine/ChaseState" method="_on_attack_range_area_body_entered"]
+[connection signal="body_exited" from="AttackRangeArea" to="StateMachine/AttackState" method="_on_attack_range_area_body_exited"]
+[connection signal="body_exited" from="AttackLeashRangeArea" to="StateMachine/AttackState" method="_on_attack_leash_range_body_exited"]
+[connection signal="body_entered" from="EnemyDetectionArea" to="StateMachine/IdleState" method="_on_enemy_detection_area_body_entered"]
+[connection signal="body_entered" from="EnemyDetectionArea" to="StateMachine/MoveState" method="_on_enemy_detection_area_body_entered"]
+[connection signal="body_entered" from="EnemyDetectionArea" to="StateMachine/TakeCoverState" method="_on_enemy_detection_area_body_entered"]
