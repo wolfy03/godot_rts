@@ -41,7 +41,7 @@ radius = 12.0
 
 [node name="BaseUnit" type="CharacterBody3D" unique_id=670265066]
 collision_layer = 2
-collision_mask = 6
+collision_mask = 7
 script = ExtResource("1_n14s1")
 equipped_weapon = ExtResource("8_rifle")
 

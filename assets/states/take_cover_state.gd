@@ -5,6 +5,7 @@ const ID = "TAKE_COVER_STATE"
 
 var _cover: Cover
 var _cover_position: Vector3
+var _cover_slot: Marker3D
 
 func _get_id() -> String:
 	return ID
@@ -17,17 +18,27 @@ func _activate(data) -> void:
 	_unit.movement_enabled = true
 	
 	_cover = data as Cover
+	_cover_slot = null
 	if _cover == null:
 		_deactivate()
 		transition_to_state.emit(IdleState.ID, null)
 		return
 	
-	var agent_radius := 0.45
-	if _unit.navigation_agent:
-		agent_radius = _unit.navigation_agent.radius
+	if _unit.current_cover != null and _unit.current_cover != _cover:
+		_unit.clear_cover()
 	
-	_cover_position = _cover.get_cover_position(_unit.global_position, agent_radius)
+	_cover_slot = _cover.reserve_slot(_unit)
+	if _cover_slot == null:
+		_unit.clear_cover()
+		_deactivate()
+		transition_to_state.emit(IdleState.ID, null)
+		return
+	
+	_cover_position = _cover_slot.global_position
 	_unit.navigation_agent.target_position = _cover_position
+	
+	if _unit.is_in_reserved_cover_slot():
+		_unit.occupy_reserved_cover()
 
 func _deactivate() -> void:
 	super._deactivate()
@@ -38,11 +49,24 @@ func _process_state(_delta: float) -> void:
 		transition_to_state.emit(IdleState.ID, null)
 		return
 	
-	if _unit.navigation_agent.is_navigation_finished() or _unit.global_position.distance_to(_cover_position) <= 0.75:
+	if _unit.current_cover == null and _unit.reserved_cover == null and _cover_slot != null:
+		_cover_slot = null
+		_deactivate()
+		transition_to_state.emit(IdleState.ID, null)
+		return
+	
+	if _cover_slot == null:
+		_cover_slot = _cover.get_reserved_slot(_unit)
+		if _cover_slot != null:
+			_cover_position = _cover_slot.global_position
+		else:
+			_deactivate()
+			transition_to_state.emit(IdleState.ID, null)
+			return
+	
+	if _unit.navigation_agent.is_navigation_finished() or _unit.is_in_reserved_cover_slot():
 		if _unit.current_cover != _cover:
-			_unit.current_cover = _cover
-			_unit.update_cover_indicator()
-			_unit.navigation_agent.target_position = _unit.global_position
+			_unit.occupy_reserved_cover()
 		
 		var target := _unit.get_nearest_attackable_unit_in_range()
 		if target:

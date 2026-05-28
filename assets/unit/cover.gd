@@ -8,37 +8,83 @@ enum CoverGrade {
 }
 
 @export var grade: CoverGrade = CoverGrade.MEDIUM
-@export var cover_padding: float = 0.35
+
+var _slot_occupants: Dictionary = {}
 
 func _ready():
 	add_to_group("covers")
 
-func get_cover_position(from_position: Vector3, agent_radius: float) -> Vector3:
-	var collision_shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
-	var box := collision_shape.shape as BoxShape3D if collision_shape else null
-	var padding := agent_radius + cover_padding
+func reserve_slot(unit: Unit) -> Marker3D:
+	if not is_instance_valid(unit):
+		return null
 	
-	if box == null:
-		var direction := from_position - global_position
-		direction.y = 0.0
-		if direction.length_squared() < 0.001:
-			direction = -global_transform.basis.z
-		return global_position + direction.normalized() * padding
+	_prune_invalid_occupants()
 	
-	var local_from := to_local(from_position)
-	var half_size := box.size * 0.5
-	var local_target := Vector3.ZERO
+	if unit.reserved_cover != null and unit.reserved_cover != self:
+		unit.clear_cover()
 	
-	if half_size.x <= 0.0 or absf(local_from.z / maxf(half_size.z, 0.001)) >= absf(local_from.x / maxf(half_size.x, 0.001)):
-		local_target.x = clampf(local_from.x, -half_size.x, half_size.x)
-		local_target.z = signf(local_from.z) * (half_size.z + padding)
-	else:
-		local_target.x = signf(local_from.x) * (half_size.x + padding)
-		local_target.z = clampf(local_from.z, -half_size.z, half_size.z)
+	var reserved_slot := get_reserved_slot(unit)
+	if reserved_slot != null:
+		return reserved_slot
 	
-	if absf(local_target.x) < 0.001 and absf(local_target.z) < 0.001:
-		local_target.z = half_size.z + padding
+	var slots := get_cover_slots()
+	slots.sort_custom(func(a: Marker3D, b: Marker3D): return a.global_position.distance_squared_to(unit.global_position) < b.global_position.distance_squared_to(unit.global_position))
 	
-	var cover_position := to_global(local_target)
-	cover_position.y = from_position.y
-	return cover_position
+	for slot in slots:
+		var slot_key := _get_slot_key(slot)
+		if _slot_occupants.has(slot_key):
+			continue
+		
+		_slot_occupants[slot_key] = unit
+		unit.reserved_cover = self
+		unit.reserved_cover_slot = slot
+		return slot
+	
+	return null
+
+func release_slot(unit: Unit) -> void:
+	for slot_key in _slot_occupants.keys():
+		if _slot_occupants[slot_key] == unit:
+			_slot_occupants.erase(slot_key)
+			return
+
+func has_available_slot(unit: Unit) -> bool:
+	_prune_invalid_occupants()
+	if get_reserved_slot(unit) != null:
+		return true
+	
+	for slot in get_cover_slots():
+		if not _slot_occupants.has(_get_slot_key(slot)):
+			return true
+	
+	return false
+
+func get_reserved_slot(unit: Unit) -> Marker3D:
+	for slot in get_cover_slots():
+		var slot_key := _get_slot_key(slot)
+		if _slot_occupants.get(slot_key) == unit:
+			return slot
+	
+	return null
+
+func get_cover_slots() -> Array[Marker3D]:
+	var slots: Array[Marker3D] = []
+	var slots_parent := get_node_or_null("CoverSlots")
+	if slots_parent == null:
+		return slots
+	
+	for child in slots_parent.get_children():
+		var slot := child as Marker3D
+		if slot != null:
+			slots.append(slot)
+	
+	return slots
+
+func _prune_invalid_occupants() -> void:
+	for slot_key in _slot_occupants.keys():
+		var unit := _slot_occupants[slot_key] as Unit
+		if not is_instance_valid(unit):
+			_slot_occupants.erase(slot_key)
+
+func _get_slot_key(slot: Marker3D) -> String:
+	return str(slot.get_path())

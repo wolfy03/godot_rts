@@ -2,12 +2,13 @@
 
 [ext_resource type="PackedScene" uid="uid://dr3dx0phgxkof" path="res://assets/unit/base_units/base_unit.tscn" id="1_mj5b0"]
 [ext_resource type="PackedScene" uid="uid://d3qhbxkjqiwo2" path="res://input/input.tscn" id="2_wmwms"]
-[ext_resource type="Resource" path="res://assets/equipment/sniper_rifle.tres" id="3_18dot"]
+[ext_resource type="Resource" uid="uid://cd20xwi3rly3r" path="res://assets/equipment/sniper_rifle.tres" id="3_18dot"]
 [ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://assets/unit/base_units/base_enemy.tscn" id="3_kvasj"]
 [ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="4_8th66"]
 [ext_resource type="PackedScene" uid="uid://djwhtmeln65rx" path="res://assets/unit/big_enemy.tscn" id="4_qrnxu"]
 [ext_resource type="Resource" path="res://assets/equipment/machine_gun.tres" id="4_v1acv"]
-[ext_resource type="PackedScene" path="res://assets/unit/cover.tscn" id="5_cover"]
+[ext_resource type="PackedScene" uid="uid://sytkho2rgyw4" path="res://assets/unit/cover.tscn" id="5_cover"]
+
 [sub_resource type="NavigationMesh" id="NavigationMesh_bk1f5"]
 vertices = PackedVector3Array(-24.5, 1, -25.5, -24.5, 1, 23.5, 24.5, 1, 23.5, 24.5, 1, -25.5)
 polygons = [PackedInt32Array(3, 2, 0), PackedInt32Array(0, 2, 1)]
@@ -60,18 +61,17 @@ light_energy = 2.5
 
 [node name="Input" parent="." unique_id=419650762 instance=ExtResource("2_wmwms")]
 
-[node name="CoversContainer" type="Node3D" parent="."]
+[node name="CoversContainer" type="Node3D" parent="." unique_id=869847948]
 
-[node name="CoverHigh" parent="CoversContainer" instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 4)
+[node name="CoverHigh" parent="CoversContainer" unique_id=170687556 instance=ExtResource("5_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.745459, 0, 4)
 grade = 2
 
-[node name="CoverMedium" parent="CoversContainer" instance=ExtResource("5_cover")]
+[node name="CoverMedium" parent="CoversContainer" unique_id=1044752534 instance=ExtResource("5_cover")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
-grade = 1
 
-[node name="CoverLow" parent="CoversContainer" instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 4)
+[node name="CoverLow" parent="CoversContainer" unique_id=1008265127 instance=ExtResource("5_cover")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.0203857, 0, 4)
 grade = 0
 
 [node name="UnitsContainer" type="Node3D" parent="." unique_id=625152519]

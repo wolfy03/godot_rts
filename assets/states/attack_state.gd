@@ -34,6 +34,9 @@ func _process_state(delta: float) -> void:
 		_exit()
 		return
 	
+	if _take_cover_if_available():
+		return
+	
 	if not _unit.can_attack_unit(_attack_target):
 		_chase_or_hold_current_target()
 		return
@@ -68,6 +71,18 @@ func _chase_or_hold_current_target() -> void:
 		transition_to_state.emit(HoldPositionState.ID, null)
 	else:
 		transition_to_state.emit(ChaseState.ID, _attack_target)
+
+func _take_cover_if_available() -> bool:
+	if not _unit.should_prioritize_cover_against(_attack_target):
+		return false
+	
+	var cover := _unit.get_auto_cover()
+	if cover == null:
+		return false
+	
+	_deactivate()
+	transition_to_state.emit(TakeCoverState.ID, cover)
+	return true
 
 func _on_attack_range_area_body_exited(body: Node3D) -> void:
 	if _is_active and body == _attack_target and _attack_target._current_health > 0 and not _unit.can_attack_unit(_attack_target):
