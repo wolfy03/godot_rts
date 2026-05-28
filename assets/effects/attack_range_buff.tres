@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="UnitEffect" format=3]
+
+[ext_resource type="Script" path="res://assets/effects/unit_effect.gd" id="1_unit_effect"]
+[ext_resource type="Texture2D" path="res://assets/effects/icons/attack_range_icon.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_unit_effect")
+id = &"attack_range_buff"
+display_name = "Attack Range Buff"
+effect_type = 0
+duration = 10.0
+icon = ExtResource("2_icon")
+indicator_color = Color(0.25, 0.65, 1, 1)
+ranged_range_bonus = 4.0
+attack_range_bonus = 1.0

@@ -18,15 +18,18 @@ var _selected_units: Dictionary = {}
 var _command_targeting_active: bool = false
 
 func _input(event: InputEvent) -> void:
-	if _command_targeting_active or _is_pointer_over_command_panel(event):
+	if _command_targeting_active:
 		return
 	
 	if Input.is_action_just_pressed(SELECT_UNIT_ACTION):
+		if _is_pointer_over_command_panel(event):
+			return
 		_start_selection()
-	elif Input.is_action_pressed(SELECT_UNIT_ACTION):
+	elif dragging and Input.is_action_pressed(SELECT_UNIT_ACTION):
 		end_position = _get_mouse_position()
 		_select_units_in_rect()
-	elif Input.is_action_just_released(SELECT_UNIT_ACTION):
+	elif dragging and Input.is_action_just_released(SELECT_UNIT_ACTION):
+		end_position = _get_mouse_position()
 		_select_units_in_rect()
 		dragging = false
 

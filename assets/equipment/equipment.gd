@@ -16,6 +16,8 @@ enum Slot {
 @export var attack_damage_bonus: int = 0
 @export var attack_range_bonus: float = 0.0
 @export var attack_speed_multiplier: float = 1.0
+@export_range(0.0, 1.0, 0.01) var accuracy_bonus: float = 0.0
+@export_range(0.0, 1.0, 0.01) var evasion_bonus: float = 0.0
 
 func apply_to(unit: Unit) -> void:
 	unit.max_health += max_health_bonus
@@ -24,3 +26,5 @@ func apply_to(unit: Unit) -> void:
 	unit.equipment_attack_damage_bonus += attack_damage_bonus
 	unit.equipment_attack_range_bonus += ranged_range_bonus + attack_range_bonus
 	unit.equipment_attack_speed_multiplier *= attack_speed_multiplier
+	unit.equipment_accuracy_bonus += accuracy_bonus
+	unit.equipment_evasion_bonus += evasion_bonus

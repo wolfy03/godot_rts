@@ -64,14 +64,14 @@ light_energy = 2.5
 [node name="CoversContainer" type="Node3D" parent="." unique_id=869847948]
 
 [node name="CoverHigh" parent="CoversContainer" unique_id=170687556 instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.745459, 0, 4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.0353165, 0, 4)
 grade = 2
 
 [node name="CoverMedium" parent="CoversContainer" unique_id=1044752534 instance=ExtResource("5_cover")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
 
 [node name="CoverLow" parent="CoversContainer" unique_id=1008265127 instance=ExtResource("5_cover")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.0203857, 0, 4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5153756, 0, 4)
 grade = 0
 
 [node name="UnitsContainer" type="Node3D" parent="." unique_id=625152519]

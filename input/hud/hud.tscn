@@ -1,7 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://dso33f6n4pbxj"]
+[gd_scene format=3 uid="uid://dso33f6n4pbxj"]
 
-[ext_resource type="Script" path="res://input/hud/fps_label.gd" id="1_ccd1m"]
-[ext_resource type="Script" path="res://input/hud/command_panel.gd" id="2_ai74f"]
+[ext_resource type="Script" uid="uid://bn7hek2eiocwi" path="res://input/hud/fps_label.gd" id="1_ccd1m"]
+[ext_resource type="Script" uid="uid://wxs18yiq72wb" path="res://input/hud/command_panel.gd" id="2_ai74f"]
+[ext_resource type="Script" path="res://input/hud/debug_overlay.gd" id="3_debug_overlay"]
+[ext_resource type="Script" path="res://input/hud/minimap.gd" id="4_minimap"]
+[ext_resource type="Script" path="res://input/hud/unit_status_panel.gd" id="5_status_panel"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_panel"]
 bg_color = Color(0.052, 0.062, 0.072, 0.92)
@@ -27,18 +30,6 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_button_hover"]
-bg_color = Color(0.18, 0.21, 0.22, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.63, 0.72, 0.74, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_button_pressed"]
 bg_color = Color(0.13, 0.32, 0.28, 1)
 border_width_left = 2
@@ -51,9 +42,21 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
-[node name="HUD" type="CanvasLayer"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_command_button_hover"]
+bg_color = Color(0.18, 0.21, 0.22, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.63, 0.72, 0.74, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
-[node name="FSPLabel" type="Label" parent="."]
+[node name="HUD" type="CanvasLayer" unique_id=609632561]
+
+[node name="FSPLabel" type="Label" parent="." unique_id=2058476354]
 unique_name_in_owner = true
 modulate = Color(0, 0, 0, 1)
 anchors_preset = 1
@@ -66,7 +69,36 @@ text = "120 FPS"
 horizontal_alignment = 2
 script = ExtResource("1_ccd1m")
 
-[node name="CommandPanel" type="PanelContainer" parent="."]
+[node name="Minimap" type="Control" parent="."]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 180)
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -196.0
+offset_right = 196.0
+offset_bottom = -16.0
+grow_vertical = 0
+clip_contents = true
+script = ExtResource("4_minimap")
+
+[node name="UnitStatusPanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(360, 180)
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 212.0
+offset_top = -196.0
+offset_right = -352.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("5_status_panel")
+
+[node name="CommandPanel" type="PanelContainer" parent="." unique_id=981535704]
 unique_name_in_owner = true
 visible = false
 anchors_preset = 3
@@ -80,22 +112,21 @@ offset_right = -16.0
 offset_bottom = -16.0
 grow_horizontal = 0
 grow_vertical = 0
-mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_panel")
 script = ExtResource("2_ai74f")
 
-[node name="MarginContainer" type="MarginContainer" parent="CommandPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="CommandPanel" unique_id=2145986649]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CommandPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CommandPanel/MarginContainer" unique_id=187065916]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="SelectionLabel" type="Label" parent="CommandPanel/MarginContainer/VBoxContainer"]
+[node name="SelectionLabel" type="Label" parent="CommandPanel/MarginContainer/VBoxContainer" unique_id=997624263]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.9, 0.86, 1)
@@ -103,13 +134,13 @@ theme_override_font_sizes/font_size = 14
 text = "선택 유닛 1"
 horizontal_alignment = 2
 
-[node name="CommandGrid" type="GridContainer" parent="CommandPanel/MarginContainer/VBoxContainer"]
+[node name="CommandGrid" type="GridContainer" parent="CommandPanel/MarginContainer/VBoxContainer" unique_id=1819724747]
 layout_mode = 2
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
-columns = 3
+columns = 4
 
-[node name="MoveButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="MoveButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=2008727665]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
@@ -117,11 +148,11 @@ focus_mode = 0
 theme_override_colors/font_color = Color(0.9, 0.95, 0.92, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_command_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_command_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 text = "이동"
 
-[node name="AttackButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="AttackButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=1034036685]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
@@ -129,11 +160,11 @@ focus_mode = 0
 theme_override_colors/font_color = Color(0.9, 0.95, 0.92, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_command_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_command_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 text = "공격"
 
-[node name="StopButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="StopButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=1926914905]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
@@ -141,11 +172,11 @@ focus_mode = 0
 theme_override_colors/font_color = Color(0.9, 0.95, 0.92, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_command_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_command_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 text = "정지"
 
-[node name="HoldButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="HoldButton" type="Button" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=799246630]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
@@ -153,31 +184,76 @@ focus_mode = 0
 theme_override_colors/font_color = Color(0.9, 0.95, 0.92, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_command_button")
-theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_command_button_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_command_button_hover")
 text = "위치사수"
 
-[node name="EmptySlot1" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="EmptySlot1" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=793201686]
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
 
-[node name="EmptySlot2" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="EmptySlot2" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=233304439]
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
 
-[node name="EmptySlot3" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="EmptySlot3" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=2143168504]
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
 
-[node name="EmptySlot4" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="EmptySlot4" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=473761462]
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
 
-[node name="EmptySlot5" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid"]
+[node name="EmptySlot5" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=1295800603]
 custom_minimum_size = Vector2(94, 46)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot6" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=835709657]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot7" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=350428744]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot8" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=2094019656]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot9" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=544647268]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot10" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=1660090949]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot11" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=746666089]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="EmptySlot12" type="Panel" parent="CommandPanel/MarginContainer/VBoxContainer/CommandGrid" unique_id=376432078]
+custom_minimum_size = Vector2(94, 46)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_command_button")
+
+[node name="DebugOverlay" type="Control" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_debug_overlay")

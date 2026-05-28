@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UnitEffect" format=3]
+
+[ext_resource type="Script" path="res://assets/effects/unit_effect.gd" id="1_unit_effect"]
+[ext_resource type="Texture2D" path="res://assets/effects/icons/poison_icon.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_unit_effect")
+id = &"poison_debuff"
+display_name = "Poison"
+effect_type = 1
+duration = 8.0
+icon = ExtResource("2_icon")
+indicator_color = Color(0.4, 0.95, 0.15, 1)
+health_delta_per_second = -4.0
