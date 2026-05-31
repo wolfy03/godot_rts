@@ -48,11 +48,11 @@ func has_stat_modifiers() -> bool:
 		or attack_damage_bonus != 0 \
 		or melee_damage_bonus != 0 \
 		or ranged_damage_bonus != 0 \
-		or !is_zero_approx(melee_range_bonus) \
-		or !is_zero_approx(ranged_range_bonus) \
-		or !is_zero_approx(attack_range_bonus) \
-		or !is_equal_approx(attack_speed_multiplier, 1.0) \
-		or !is_zero_approx(move_speed_bonus) \
-		or !is_zero_approx(vision_range_bonus) \
-		or !is_zero_approx(projectile_evasion_chance) \
-		or !is_zero_approx(health_delta_per_second)
+		or not is_zero_approx(melee_range_bonus) \
+		or not is_zero_approx(ranged_range_bonus) \
+		or not is_zero_approx(attack_range_bonus) \
+		or not is_equal_approx(attack_speed_multiplier, 1.0) \
+		or not is_zero_approx(move_speed_bonus) \
+		or not is_zero_approx(vision_range_bonus) \
+		or not is_zero_approx(projectile_evasion_chance) \
+		or not is_zero_approx(health_delta_per_second)

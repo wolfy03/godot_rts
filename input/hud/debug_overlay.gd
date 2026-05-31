@@ -73,7 +73,7 @@ func _submit_console_command(command: String) -> void:
 		_status_label.text = "Unknown command: %s" % command
 
 func _apply_effect_to_selected(effect_path: String, label: String) -> void:
-	var effect := load(effect_path) as Resource
+	var effect := load(effect_path) as UnitEffect
 	if effect == null:
 		_status_label.text = "Failed to load %s." % effect_path
 		return

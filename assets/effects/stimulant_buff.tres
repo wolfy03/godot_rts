@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="UnitEffect" format=3]
+
+[ext_resource type="Script" path="res://assets/effects/unit_effect.gd" id="1_unit_effect"]
+[ext_resource type="Texture2D" path="res://assets/effects/icons/health_recovery_icon.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_unit_effect")
+id = &"stimulant_buff"
+display_name = "Stimulant"
+effect_type = 0
+duration = 8.0
+icon = ExtResource("2_icon")
+indicator_color = Color(0.1, 0.8, 0.95, 1)
+instant_health_delta = 8
+attack_speed_multiplier = 1.25
+move_speed_bonus = 1.5

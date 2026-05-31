@@ -22,6 +22,7 @@ func _activate(data) -> void:
 
 func _process_state(_delta: float) -> void:
 	if not is_instance_valid(_attack_target):
+		_unit.finish_player_command(Unit.PlayerCommandMode.ATTACK_TARGET)
 		_deactivate()
 		
 		if _unit.last_move_command_data:

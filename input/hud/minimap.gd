@@ -170,17 +170,14 @@ func _get_content_bounds() -> Rect2:
 
 func _get_units() -> Array[Unit]:
 	var units: Array[Unit] = []
-	_collect_units(get_tree().current_scene, units)
-	return units
+	for node in get_tree().get_nodes_in_group("units"):
+		var unit := node as Unit
+		if unit == null:
+			continue
 
-func _collect_units(node: Node, units: Array[Unit]) -> void:
-	var unit := node as Unit
-	if unit != null:
 		units.append(unit)
-		return
 	
-	for child in node.get_children():
-		_collect_units(child, units)
+	return units
 
 func _world_to_map(world_position: Vector3, map_rect: Rect2, world_bounds: Rect2) -> Vector2:
 	var normalized_x := inverse_lerp(world_bounds.position.x, world_bounds.end.x, world_position.x)
@@ -190,10 +187,10 @@ func _world_to_map(world_position: Vector3, map_rect: Rect2, world_bounds: Rect2
 		map_rect.position.y + normalized_z * map_rect.size.y
 	)
 
-func _screen_to_ground(camera: Camera3D, screen_position: Vector2):
+func _screen_to_ground(camera: Camera3D, screen_position: Vector2) -> Variant:
 	var ray_origin := camera.project_ray_origin(screen_position)
 	var ray_direction := camera.project_ray_normal(screen_position)
-	if absf(ray_direction.y) < 0.001:
+	if is_zero_approx(ray_direction.y):
 		return null
 	
 	var distance := (GROUND_PLANE_Y - ray_origin.y) / ray_direction.y

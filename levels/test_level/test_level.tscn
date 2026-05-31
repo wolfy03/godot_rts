@@ -78,13 +78,16 @@ grade = 0
 
 [node name="Unit1" parent="UnitsContainer" unique_id=1554288225 instance=ExtResource("1_mj5b0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1, 8.991632)
+unit_class = 3
 equipped_weapon = ExtResource("3_18dot")
 
 [node name="Unit2" parent="UnitsContainer" unique_id=1304184050 instance=ExtResource("1_mj5b0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 1, 10.241632)
+unit_class = 1
 
 [node name="Unit3" parent="UnitsContainer" unique_id=488343645 instance=ExtResource("1_mj5b0")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 1, 8.991632)
+unit_class = 2
 equipped_weapon = ExtResource("4_v1acv")
 
 [node name="Unit4" parent="UnitsContainer" unique_id=1160986755 instance=ExtResource("1_mj5b0")]

@@ -71,6 +71,7 @@ func _send_units_to_cover(cover: Cover) -> void:
 			continue
 		
 		_clear_unit_command_state(unit)
+		unit.begin_player_command(Unit.PlayerCommandMode.MOVE)
 		unit.state_machine.transition_to_state(TakeCoverState.ID, cover)
 
 func _get_selection_bounds() -> SelectionBounds:
@@ -132,6 +133,7 @@ func _issue_move_order(unit: Unit, target_position: Vector3, attack_move: bool) 
 	var data := MoveState.MoveCommandData.new()
 	data.target_position = target_position
 	data.attack_move = attack_move
+	unit.begin_player_command(Unit.PlayerCommandMode.ATTACK_MOVE if attack_move else Unit.PlayerCommandMode.MOVE)
 	unit.state_machine.transition_to_state(MoveState.ID, data)
 
 func _clear_unit_command_state(unit: Unit) -> void:

@@ -1,12 +1,11 @@
 extends PanelContainer
 class_name UnitStatusPanel
 
-const INFANTRY_PORTRAIT_PATH := "res://assets/unit/portraits/infantry_portrait.png"
-
 var _selected_unit: Unit = null
 var _portrait: TextureRect
 var _name_label: Label
 var _health_label: Label
+var _veterancy_label: Label
 var _attack_label: Label
 var _defense_label: Label
 var _effects_label: Label
@@ -56,7 +55,6 @@ func _build_ui() -> void:
 	row.add_child(portrait_frame)
 	
 	_portrait = TextureRect.new()
-	_portrait.texture = _load_portrait_texture()
 	_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait_frame.add_child(_portrait)
@@ -70,6 +68,8 @@ func _build_ui() -> void:
 	stats.add_child(_name_label)
 	_health_label = _make_label()
 	stats.add_child(_health_label)
+	_veterancy_label = _make_label()
+	stats.add_child(_veterancy_label)
 	_attack_label = _make_label()
 	stats.add_child(_attack_label)
 	_defense_label = _make_label()
@@ -89,17 +89,6 @@ func _make_label(font_size: int = 13, font_color: Color = Color(0.78, 0.86, 0.82
 	label.clip_text = false
 	return label
 
-func _load_portrait_texture() -> Texture2D:
-	var texture := load(INFANTRY_PORTRAIT_PATH) as Texture2D
-	if texture != null:
-		return texture
-	
-	var image := Image.new()
-	if image.load(INFANTRY_PORTRAIT_PATH) != OK:
-		return null
-	
-	return ImageTexture.create_from_image(image)
-
 func _set_selected_unit(unit: Unit) -> void:
 	if _selected_unit == unit:
 		_refresh()
@@ -118,6 +107,8 @@ func _connect_selected_unit() -> void:
 		_selected_unit.health_changed.connect(_on_selected_unit_health_changed)
 	if not _selected_unit.effects_changed.is_connected(_on_selected_unit_effects_changed):
 		_selected_unit.effects_changed.connect(_on_selected_unit_effects_changed)
+	if not _selected_unit.veterancy_changed.is_connected(_on_selected_unit_veterancy_changed):
+		_selected_unit.veterancy_changed.connect(_on_selected_unit_veterancy_changed)
 	if not _selected_unit.tree_exiting.is_connected(_on_selected_unit_tree_exiting):
 		_selected_unit.tree_exiting.connect(_on_selected_unit_tree_exiting)
 
@@ -129,6 +120,8 @@ func _disconnect_selected_unit() -> void:
 		_selected_unit.health_changed.disconnect(_on_selected_unit_health_changed)
 	if _selected_unit.effects_changed.is_connected(_on_selected_unit_effects_changed):
 		_selected_unit.effects_changed.disconnect(_on_selected_unit_effects_changed)
+	if _selected_unit.veterancy_changed.is_connected(_on_selected_unit_veterancy_changed):
+		_selected_unit.veterancy_changed.disconnect(_on_selected_unit_veterancy_changed)
 	if _selected_unit.tree_exiting.is_connected(_on_selected_unit_tree_exiting):
 		_selected_unit.tree_exiting.disconnect(_on_selected_unit_tree_exiting)
 
@@ -137,10 +130,18 @@ func _refresh() -> void:
 	if _selected_unit == null:
 		return
 	
-	_name_label.text = _selected_unit.name
+	_name_label.text = "%s / %s" % [_selected_unit.name, _selected_unit.get_unit_class_name()]
 	_portrait.texture = _selected_unit.get_portrait_texture()
 	_health_label.text = "체력: %d / %d" % [_selected_unit.get_current_health(), _selected_unit.get_max_health()]
-	_attack_label.text = "공격력: %d / 명중률: %d%%" % [_get_attack_damage(_selected_unit), roundi(_selected_unit.get_accuracy(_selected_unit.equipped_weapon == null) * 100.0)]
+	_veterancy_label.text = "베테런시: %s (%d / %d)" % [
+		_selected_unit.get_veterancy_name(),
+		_selected_unit.experience,
+		_selected_unit.get_next_veterancy_experience(),
+	]
+	_attack_label.text = "공격력: %d / 명중률: %d%%" % [
+		_get_attack_damage(_selected_unit),
+		roundi(_selected_unit.get_accuracy(_selected_unit.equipped_weapon == null) * 100.0),
+	]
 	_defense_label.text = "방어력: %d / 회피율: %d%%" % [_selected_unit.get_defense(), roundi(_selected_unit.get_evasion_chance() * 100.0)]
 	_effects_label.text = "효과: %s" % _get_effect_summary(_selected_unit)
 	_equipment_label.text = "장비: %s" % _get_equipment_summary(_selected_unit)
@@ -197,7 +198,7 @@ func _format_equipment_name(item: Equipment) -> String:
 	
 	return "%s(%s)" % [item.display_name, ", ".join(modifiers)]
 
-func _format_effect_name(effect: Resource) -> String:
+func _format_effect_name(effect: UnitEffect) -> String:
 	if effect.projectile_evasion_chance > 0.0:
 		return "%s(%d%%)" % [effect.display_name, roundi(effect.projectile_evasion_chance * 100.0)]
 	
@@ -213,6 +214,9 @@ func _on_selected_unit_health_changed(_current_health: int, _max_health: int) ->
 	_refresh()
 
 func _on_selected_unit_effects_changed() -> void:
+	_refresh()
+
+func _on_selected_unit_veterancy_changed(_veterancy: int, _experience: int, _next_required_experience: int) -> void:
 	_refresh()
 
 func _on_selected_unit_tree_exiting() -> void:

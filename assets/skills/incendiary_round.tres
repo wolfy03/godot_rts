@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="UnitSkill" format=3]
+
+[ext_resource type="Script" path="res://assets/skills/unit_skill.gd" id="1_unit_skill"]
+[ext_resource type="Resource" path="res://assets/effects/incendiary_burn_debuff.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_unit_skill")
+id = &"incendiary_round"
+display_name = "소이탄"
+description = "지정 지점 주변 적에게 피해와 화상 효과를 줍니다."
+skill_type = 0
+target_type = 2
+cooldown = 12.0
+cast_range = 9.0
+radius = 2.5
+damage = 12
+effect = ExtResource("2_effect")
+affects_enemies = true
+affects_allies = false

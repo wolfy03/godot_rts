@@ -67,14 +67,11 @@ func _process_state(_delta: float) -> void:
 	if _unit.navigation_agent.is_navigation_finished() or _unit.is_in_reserved_cover_slot():
 		if _unit.current_cover != _cover:
 			_unit.occupy_reserved_cover()
+			_unit.finish_player_command(Unit.PlayerCommandMode.MOVE)
 		
-		var target := _unit.get_nearest_attackable_unit_in_range()
-		if target:
-			_deactivate()
-			transition_to_state.emit(AttackState.ID, target)
-			return
+		if _unit.ai_brain != null:
+			_unit.ai_brain.request_decision()
 
-func _on_enemy_detection_area_body_entered(body: Node3D) -> void:
-	if _is_active and _unit.can_attack_unit(body as Unit):
-		_deactivate()
-		transition_to_state.emit(AttackState.ID, body)
+func _on_enemy_detection_area_body_entered(_body: Node3D) -> void:
+	if _is_active and _unit.ai_brain != null:
+		_unit.ai_brain.request_decision()

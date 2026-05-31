@@ -11,23 +11,9 @@ func _activate(data) -> void:
 	if not _is_active:
 		return
 	
-	var cover := _unit.get_auto_cover()
-	if cover != null:
-		_deactivate()
-		transition_to_state.emit(TakeCoverState.ID, cover)
-		return
-	
-	if _unit.attack_nearest_unit_in_range():
-		_deactivate()
-		return
+	if _unit.ai_brain != null:
+		_unit.ai_brain.request_decision()
 
-func _on_enemy_detection_area_body_entered(body: Node3D) -> void:
-	if _is_active:
-		var cover := _unit.get_auto_cover()
-		if cover != null:
-			_deactivate()
-			transition_to_state.emit(TakeCoverState.ID, cover)
-			return
-		
-		_deactivate()
-		transition_to_state.emit(ChaseState.ID, body)
+func _on_enemy_detection_area_body_entered(_body: Node3D) -> void:
+	if _is_active and _unit.ai_brain != null:
+		_unit.ai_brain.request_decision()

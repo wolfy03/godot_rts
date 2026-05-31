@@ -10,6 +10,8 @@
 [ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="8_rifle"]
 [ext_resource type="Script" uid="uid://bawarbyy1oamq" path="res://assets/states/take_cover_state.gd" id="9_tc"]
 [ext_resource type="Texture2D" uid="uid://v617ubq8frct" path="res://assets/unit/shield.png" id="10_shield"]
+[ext_resource type="Script" path="res://assets/unit/ai_brain.gd" id="11_ai"]
+[ext_resource type="Script" path="res://assets/states/heal_state.gd" id="12_heal"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_body"]
 radius = 0.38
@@ -121,6 +123,10 @@ unique_name_in_owner = true
 script = ExtResource("2_dvoc7")
 initial_state_id = "IDLE_STATE"
 
+[node name="AIBrain" type="Node" parent="." unique_id=1490140710]
+unique_name_in_owner = true
+script = ExtResource("11_ai")
+
 [node name="IdleState" type="Node3D" parent="StateMachine" unique_id=1121897770]
 script = ExtResource("3_4ksry")
 
@@ -138,6 +144,9 @@ script = ExtResource("7_ke0u6")
 
 [node name="TakeCoverState" type="Node3D" parent="StateMachine" unique_id=886297752]
 script = ExtResource("9_tc")
+
+[node name="HealState" type="Node3D" parent="StateMachine" unique_id=1396895783]
+script = ExtResource("12_heal")
 
 [connection signal="body_entered" from="AttackRangeArea" to="StateMachine/ChaseState" method="_on_attack_range_area_body_entered"]
 [connection signal="body_exited" from="AttackRangeArea" to="StateMachine/AttackState" method="_on_attack_range_area_body_exited"]

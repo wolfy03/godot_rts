@@ -51,6 +51,12 @@ func stop():
 	
 	_current_state_id = ""
 
+func get_current_state_id() -> String:
+	return _current_state_id
+
+func is_current_state(state_id: String) -> bool:
+	return _current_state_id == state_id
+
 func transition_to_state(state_id: String, data):
 	if !_is_running:
 		return

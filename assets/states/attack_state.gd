@@ -52,6 +52,7 @@ func _process_state(delta: float) -> void:
 			_exit()
 
 func _exit() -> void:
+	_unit.finish_player_command(Unit.PlayerCommandMode.ATTACK_TARGET)
 	_deactivate()
 	
 	if _unit.current_cover != null:
