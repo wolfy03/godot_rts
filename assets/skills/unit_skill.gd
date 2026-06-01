@@ -20,12 +20,18 @@ enum DeliveryType {
 	ARC_PROJECTILE,
 }
 
+enum ActivationMode {
+	USE,
+	TOGGLE,
+}
+
 @export var id: StringName = &"skill"
 @export var display_name: String = "Skill"
 @export var description: String = ""
 @export var skill_type: SkillType = SkillType.ACTIVE
 @export var target_type: TargetType = TargetType.NONE
 @export var delivery_type: DeliveryType = DeliveryType.INSTANT
+@export var activation_mode: ActivationMode = ActivationMode.USE
 @export var cooldown: float = 0.0
 @export var cast_range: float = 0.0
 @export var radius: float = 0.0
@@ -36,6 +42,9 @@ enum DeliveryType {
 @export var affects_enemies: bool = true
 @export var affects_allies: bool = false
 @export var grant_experience_on_use: bool = true
+@export_group("Toggle Attack")
+@export var toggle_ranged_damage_bonus: int = 0
+@export var toggle_projectile_trail: bool = false
 
 func is_active() -> bool:
 	return skill_type == SkillType.ACTIVE
@@ -43,9 +52,14 @@ func is_active() -> bool:
 func is_passive() -> bool:
 	return skill_type == SkillType.PASSIVE
 
+func is_toggle() -> bool:
+	return skill_type == SkillType.ACTIVE and activation_mode == ActivationMode.TOGGLE
+
 func can_activate(caster: Unit, target_unit: Unit = null, target_position: Vector3 = Vector3.INF) -> bool:
 	if caster == null or not is_instance_valid(caster) or caster._is_dead:
 		return false
+	if is_toggle():
+		return true
 	
 	match target_type:
 		TargetType.NONE, TargetType.SELF:

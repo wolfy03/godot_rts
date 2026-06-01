@@ -52,7 +52,12 @@ func command_targeting_changed(command_id: String) -> void:
 	for index in _skill_buttons.size():
 		var button := _skill_buttons[index]
 		var skill: UnitSkill = _shown_skills[index] if index < _shown_skills.size() else null
-		button.button_pressed = skill != null and command_id == _get_skill_command_id(skill.id)
+		if skill == null:
+			button.button_pressed = false
+		elif skill.is_toggle():
+			button.button_pressed = _is_skill_toggled(skill.id)
+		else:
+			button.button_pressed = command_id == _get_skill_command_id(skill.id)
 
 func _setup_skill_buttons() -> void:
 	var command_grid := _move_button.get_parent() as GridContainer
@@ -105,6 +110,7 @@ func _update_skill_buttons() -> void:
 		button.text = skill.display_name
 		button.tooltip_text = skill.description
 		button.disabled = false
+		button.button_pressed = _is_skill_toggled(skill.id) if skill.is_toggle() else false
 
 func _get_first_selected_active_skills() -> Array[UnitSkill]:
 	for unit in _selected_units.values():
@@ -120,6 +126,13 @@ func _on_skill_button_pressed(index: int) -> void:
 	if skill == null:
 		return
 	skill_command_requested.emit(skill.id)
+
+func _is_skill_toggled(skill_id: StringName) -> bool:
+	for unit in _selected_units.values():
+		var selected_unit := unit as Unit
+		if selected_unit != null and is_instance_valid(selected_unit) and selected_unit.is_skill_toggled(skill_id):
+			return true
+	return false
 
 func _get_skill_command_id(skill_id: StringName) -> String:
 	return COMMAND_SKILL_PREFIX + String(skill_id)

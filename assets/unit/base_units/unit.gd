@@ -92,6 +92,8 @@ var _active_effects_need_processing: bool = false
 var _effect_indicator_sprites: Dictionary = {}
 var _skills: Array[UnitSkill] = []
 var _skill_cooldowns: Dictionary = {}
+var _toggled_skill_ids: Dictionary = {}
+var _manual_toggle_skill_ids: Dictionary = {}
 var _passive_skill_effect_instances: Dictionary = {}
 var _player_command_mode: PlayerCommandMode = PlayerCommandMode.NONE
 var _queued_skill_id: StringName = &""
@@ -322,6 +324,9 @@ func use_skill(skill_id: StringName, target_unit: Unit = null, target_position: 
 	var skill := get_skill(skill_id)
 	if skill == null or not skill.is_active():
 		return false
+	if skill.is_toggle():
+		toggle_skill(skill_id)
+		return true
 	if get_skill_cooldown_remaining(skill.id) > 0.0:
 		return false
 	if not skill.activate(self, target_unit, target_position):
@@ -330,6 +335,21 @@ func use_skill(skill_id: StringName, target_unit: Unit = null, target_position: 
 	_skill_cooldowns[skill.id] = skill.cooldown
 	skills_changed.emit()
 	return true
+
+func toggle_skill(skill_id: StringName) -> void:
+	var skill := get_skill(skill_id)
+	if skill == null or not skill.is_toggle():
+		return
+	if _toggled_skill_ids.has(skill_id):
+		_toggled_skill_ids.erase(skill_id)
+	else:
+		_toggled_skill_ids[skill_id] = true
+	if _player_command_mode == PlayerCommandMode.SKILL:
+		_manual_toggle_skill_ids[skill_id] = true
+	skills_changed.emit()
+
+func is_skill_toggled(skill_id: StringName) -> bool:
+	return _toggled_skill_ids.has(skill_id)
 
 func issue_skill_command(skill_id: StringName, target_unit: Unit = null, target_position: Vector3 = Vector3.INF) -> bool:
 	var skill := get_skill(skill_id)
@@ -390,6 +410,13 @@ func _move_to_skill_cast_position(target_position: Vector3, cast_range: float) -
 func try_use_ai_skill() -> bool:
 	for skill in get_active_skills():
 		if get_skill_cooldown_remaining(skill.id) > 0.0:
+			continue
+		if skill.is_toggle():
+			if _manual_toggle_skill_ids.has(skill.id):
+				continue
+			if not is_skill_toggled(skill.id):
+				use_skill(skill.id, self, global_position)
+				return true
 			continue
 
 		match skill.target_type:
@@ -478,7 +505,7 @@ func get_ranged_damage() -> int:
 	if equipped_weapon == null:
 		return 0
 
-	return maxi(0, equipped_weapon.get_damage(equipment_attack_damage_bonus + _get_effect_attack_damage_bonus() + _get_effect_ranged_damage_bonus()))
+	return maxi(0, equipped_weapon.get_damage(equipment_attack_damage_bonus + _get_effect_attack_damage_bonus() + _get_effect_ranged_damage_bonus() + _get_toggled_ranged_damage_bonus()))
 
 func perform_attack(target: Unit) -> void:
 	if not is_instance_valid(target) or target._is_dead:
@@ -536,7 +563,9 @@ func _create_melee_attack_data() -> AttackData:
 	return AttackData.new(self, get_melee_damage(), get_accuracy(true), AttackData.AttackKind.MELEE)
 
 func _create_ranged_attack_data() -> AttackData:
-	return AttackData.new(self, get_ranged_damage(), get_accuracy(false), AttackData.AttackKind.RANGED)
+	var attack_data := AttackData.new(self, get_ranged_damage(), get_accuracy(false), AttackData.AttackKind.RANGED)
+	_apply_toggled_attack_modifiers(attack_data)
+	return attack_data
 
 func apply_effect(effect: UnitEffect) -> int:
 	if effect == null or _is_dead:
@@ -640,6 +669,8 @@ func _apply_equipment() -> void:
 func _build_skill_loadout() -> void:
 	_skills.clear()
 	_skill_cooldowns.clear()
+	_toggled_skill_ids.clear()
+	_manual_toggle_skill_ids.clear()
 	_passive_skill_effect_instances.clear()
 
 	for skill in common_skills:
@@ -843,6 +874,27 @@ func _get_effect_ranged_damage_bonus() -> int:
 	for active_effect in _active_effects:
 		bonus += active_effect.effect.ranged_damage_bonus
 	return bonus
+
+func _get_toggled_ranged_damage_bonus() -> int:
+	var bonus := 0
+	for skill in _get_toggled_skills():
+		bonus += skill.toggle_ranged_damage_bonus
+	return bonus
+
+func _apply_toggled_attack_modifiers(attack_data: AttackData) -> void:
+	for skill in _get_toggled_skills():
+		if skill.effect != null:
+			attack_data.impact_effect = skill.effect
+		if skill.toggle_projectile_trail:
+			attack_data.has_incendiary_trail = true
+
+func _get_toggled_skills() -> Array[UnitSkill]:
+	var toggled_skills: Array[UnitSkill] = []
+	for skill_id in _toggled_skill_ids.keys():
+		var skill := get_skill(skill_id)
+		if skill != null and skill.is_toggle():
+			toggled_skills.append(skill)
+	return toggled_skills
 
 func _get_effect_melee_range_bonus() -> float:
 	var bonus := 0.0
@@ -1157,7 +1209,10 @@ func receive_projectile_impact(attack_data: AttackData) -> int:
 	if _does_evade_projectile_impact():
 		return 0
 
-	return receive_damage(_get_incoming_attack_damage(attack_data), attack_data.get_valid_source())
+	var damage_dealt := receive_damage(_get_incoming_attack_damage(attack_data), attack_data.get_valid_source())
+	if damage_dealt > 0 and attack_data.impact_effect != null:
+		apply_effect(attack_data.impact_effect)
+	return damage_dealt
 
 func _does_projectile_aim_hit(attack_data: AttackData) -> bool:
 	if attack_data == null:

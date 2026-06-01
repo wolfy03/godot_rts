@@ -15,6 +15,8 @@ var _lifetime: float = 0.0
 func setup(target: Unit, attack_data: AttackData, miss_position: Vector3 = Vector3.INF) -> void:
 	_target = target
 	_attack_data = attack_data
+	if _attack_data != null and _attack_data.has_incendiary_trail:
+		_add_incendiary_trail()
 	if _is_aimed_miss() and miss_position != Vector3.INF:
 		_miss_direction = (miss_position - global_position).normalized()
 
@@ -112,3 +114,48 @@ func _apply_impact_to(unit: Unit) -> void:
 		return
 
 	unit.receive_projectile_impact(_attack_data)
+
+func _add_incendiary_trail() -> void:
+	var particles := GPUParticles3D.new()
+	particles.name = "IncendiaryTrail"
+	particles.position = Vector3(0.0, 0.0, 0.18)
+	particles.amount = 96
+	particles.lifetime = 0.55
+	particles.preprocess = 0.35
+	particles.draw_passes = 1
+	particles.local_coords = false
+	particles.emitting = true
+	particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	particles.visibility_aabb = AABB(Vector3(-8.0, -8.0, -8.0), Vector3(16.0, 16.0, 16.0))
+	
+	var particle_material := ParticleProcessMaterial.new()
+	particle_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	particle_material.emission_sphere_radius = 0.09
+	particle_material.direction = Vector3(0.0, 0.0, 1.0)
+	particle_material.spread = 38.0
+	particle_material.initial_velocity_min = 0.6
+	particle_material.initial_velocity_max = 2.2
+	particle_material.angular_velocity_min = -90.0
+	particle_material.angular_velocity_max = 90.0
+	particle_material.gravity = Vector3(0.0, 0.15, 0.0)
+	particle_material.damping_min = 0.15
+	particle_material.damping_max = 0.35
+	particle_material.scale_min = 0.08
+	particle_material.scale_max = 0.18
+	particle_material.color = Color(1.0, 0.46, 0.04, 0.95)
+	particles.process_material = particle_material
+	
+	var draw_material := StandardMaterial3D.new()
+	draw_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	draw_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	draw_material.albedo_color = Color(1.0, 0.34, 0.04, 0.9)
+	draw_material.emission_enabled = true
+	draw_material.emission = Color(1.0, 0.22, 0.02, 1.0)
+	draw_material.emission_energy_multiplier = 3.0
+	
+	var particle_mesh := SphereMesh.new()
+	particle_mesh.radius = 0.08
+	particle_mesh.height = 0.16
+	particle_mesh.material = draw_material
+	particles.draw_pass_1 = particle_mesh
+	add_child(particles)

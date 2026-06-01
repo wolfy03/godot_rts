@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://d3qhbxkjqiwo2"]
 
-[ext_resource type="PackedScene" uid="uid://devcefa5ovfxj" path="res://input/unit_commands/unit_move_command.tscn" id="1_p6o0v"]
+[ext_resource type="PackedScene" path="res://input/unit_commands/unit_command_controller.tscn" id="1_p6o0v"]
 [ext_resource type="PackedScene" uid="uid://cwh2eb5hud7ca" path="res://input/unit_selection/unit_selection.tscn" id="2_q5whp"]
 [ext_resource type="Script" path="res://input/camera_controls.gd" id="3_lbtg2"]
 [ext_resource type="PackedScene" uid="uid://dso33f6n4pbxj" path="res://input/hud/hud.tscn" id="4_72mkc"]
@@ -9,7 +9,7 @@
 [node name="Input" type="Node"]
 script = ExtResource("5_q82gu")
 
-[node name="UnitMoveCommand" parent="." instance=ExtResource("1_p6o0v")]
+[node name="UnitCommandController" parent="." instance=ExtResource("1_p6o0v")]
 
 [node name="Camera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.573576, 0.819152, 0, -0.819152, 0.573576, 4, 14, 12)
@@ -21,4 +21,4 @@ script = ExtResource("3_lbtg2")
 
 [node name="HUD" parent="." instance=ExtResource("4_72mkc")]
 
-[connection signal="unit_selection_changed" from="UnitSelection" to="UnitMoveCommand" method="unit_selection_changed"]
+[connection signal="unit_selection_changed" from="UnitSelection" to="UnitCommandController" method="unit_selection_changed"]
