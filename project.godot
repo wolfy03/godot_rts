@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="RTS_test"
-run/main_scene="res://levels/test_level/test_level.tscn"
+run/main_scene="res://scenes/levels/test_level/test_level.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]

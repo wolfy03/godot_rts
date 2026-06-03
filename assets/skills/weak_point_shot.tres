@@ -1,16 +1,13 @@
-[gd_resource type="Resource" script_class="UnitSkill" format=3]
+[gd_resource type="Resource" script_class="UnitSkill" format=3 uid="uid://gnylurebkce2"]
 
-[ext_resource type="Script" path="res://assets/skills/unit_skill.gd" id="1_unit_skill"]
+[ext_resource type="Script" uid="uid://dq5mfq1tt3hr" path="res://scripts/skills/unit_skill.gd" id="1_unit_skill"]
 
 [resource]
 script = ExtResource("1_unit_skill")
 id = &"weak_point_shot"
 display_name = "약점사격"
 description = "지정한 적에게 강한 단일 피해를 줍니다."
-skill_type = 0
 target_type = 4
 cooldown = 12.0
 cast_range = 18.0
 damage = 80
-affects_enemies = true
-affects_allies = false

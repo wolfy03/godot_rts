@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://2jvdtljjwthy"]
+
+[ext_resource type="Script" path="res://scripts/input/unit_commands/move_command_handle.gd" id="1_acr3r"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_hut8k"]
+radius = 0.45
+
+[node name="MoveCommandHandle" type="Area3D"]
+script = ExtResource("1_acr3r")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+visible = false
+shape = SubResource("SphereShape3D_hut8k")

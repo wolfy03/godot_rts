@@ -1,12 +1,11 @@
-[gd_resource type="Resource" script_class="UnitEffect" format=3]
+[gd_resource type="Resource" script_class="UnitEffect" format=3 uid="uid://ktyu7y0ju2to"]
 
-[ext_resource type="Script" path="res://assets/effects/unit_effect.gd" id="1_unit_effect"]
+[ext_resource type="Script" uid="uid://dnxaohp32bf02" path="res://scripts/effects/unit_effect.gd" id="1_unit_effect"]
 
 [resource]
 script = ExtResource("1_unit_effect")
 id = &"cover_low_buff"
 display_name = "낮은 엄폐"
 effect_type = 0
-duration = 0.0
 indicator_color = Color(1, 0, 0, 1)
 projectile_evasion_chance = 0.25

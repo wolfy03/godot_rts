@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://djwhtmeln65rx"]
+
+[ext_resource type="PackedScene" path="res://scenes/units/base_units/base_enemy.tscn" id="1_kdlj3"]
+
+[node name="BigEnemy" unique_id=77647107 instance=ExtResource("1_kdlj3")]
+transform = Transform3D(2.4, 0, 0, 0, 2.4, 0, 0, 0, 2.4, 0, 0, 0)
+max_health = 10000
+melee_damage = 100
+
+[node name="NavigationAgent" parent="." index="3" unique_id=98110127]
+radius = 1.1
+neighbor_distance = 4.0
+max_neighbors = 30
+max_speed = 2.0

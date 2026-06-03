@@ -1,14 +1,13 @@
-[gd_resource type="Resource" script_class="UnitSkill" format=3]
+[gd_resource type="Resource" script_class="UnitSkill" format=3 uid="uid://cno57y0f2gkov"]
 
-[ext_resource type="Script" path="res://assets/skills/unit_skill.gd" id="1_unit_skill"]
-[ext_resource type="Resource" path="res://assets/effects/stimulant_buff.tres" id="2_effect"]
+[ext_resource type="Script" uid="uid://dq5mfq1tt3hr" path="res://scripts/skills/unit_skill.gd" id="1_unit_skill"]
+[ext_resource type="Resource" uid="uid://d00lgxy86k6k6" path="res://assets/effects/stimulant_buff.tres" id="2_effect"]
 
 [resource]
 script = ExtResource("1_unit_skill")
 id = &"stimulant_injection"
 display_name = "강화제 투여"
 description = "아군에게 일시적인 회복, 이동 속도, 공격 속도 상승 효과를 줍니다."
-skill_type = 0
 target_type = 3
 cooldown = 10.0
 cast_range = 4.0

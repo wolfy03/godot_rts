@@ -3,15 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://kppe4sd6d5yx"
-path="res://.godot/imported/attack_damage_icon.png-e45688cd523792d8a9cda064c31facd5.ctex"
-metadata={
-"vram_texture": false
-}
+valid=false
 
 [deps]
 
 source_file="res://assets/effects/icons/attack_damage_icon.png"
-dest_files=["res://.godot/imported/attack_damage_icon.png-e45688cd523792d8a9cda064c31facd5.ctex"]
 
 [params]
 

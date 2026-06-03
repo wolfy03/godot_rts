@@ -1,14 +1,13 @@
-[gd_resource type="Resource" script_class="UnitSkill" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="UnitSkill" format=3 uid="uid://b7hoqvvxq0t0j"]
 
-[ext_resource type="Script" path="res://assets/skills/unit_skill.gd" id="1_unit_skill"]
-[ext_resource type="PackedScene" path="res://assets/skills/grenade_projectile.tscn" id="2_projectile"]
+[ext_resource type="Script" uid="uid://dq5mfq1tt3hr" path="res://scripts/skills/unit_skill.gd" id="1_unit_skill"]
+[ext_resource type="PackedScene" path="res://scenes/skills/grenade_projectile.tscn" id="2_projectile"]
 
 [resource]
 script = ExtResource("1_unit_skill")
 id = &"grenade_throw"
 display_name = "수류탄 투척"
 description = "지정 지점 주변 적에게 폭발 피해를 줍니다."
-skill_type = 0
 target_type = 2
 delivery_type = 1
 cooldown = 8.0
@@ -16,5 +15,3 @@ cast_range = 8.0
 radius = 2.2
 damage = 40
 projectile_scene = ExtResource("2_projectile")
-affects_enemies = true
-affects_allies = false

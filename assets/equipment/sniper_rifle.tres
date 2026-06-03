@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="WeaponEquipment" format=3 uid="uid://cd20xwi3rly3r"]
 
-[ext_resource type="PackedScene" uid="uid://3gflouipvxfy" path="res://assets/projectiles/sniper_projectile.tscn" id="1_projectile"]
-[ext_resource type="Script" uid="uid://0rqglbt7qp6v" path="res://assets/equipment/weapon_equipment.gd" id="2_weapon"]
+[ext_resource type="PackedScene" uid="uid://3gflouipvxfy" path="res://scenes/projectiles/sniper_projectile.tscn" id="1_projectile"]
+[ext_resource type="Script" uid="uid://0rqglbt7qp6v" path="res://scripts/equipment/weapon_equipment.gd" id="2_weapon"]
 
 [resource]
 script = ExtResource("2_weapon")

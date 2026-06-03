@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="UnitSkill" format=3 uid="uid://hbi65tvqvu3l"]
 
-[ext_resource type="Script" uid="uid://dq5mfq1tt3hr" path="res://assets/skills/unit_skill.gd" id="1_unit_skill"]
-[ext_resource type="Resource" path="res://assets/effects/incendiary_burn_debuff.tres" id="2_effect"]
+[ext_resource type="Script" uid="uid://dq5mfq1tt3hr" path="res://scripts/skills/unit_skill.gd" id="1_unit_skill"]
+[ext_resource type="Resource" uid="uid://bsojf64k3fsdc" path="res://assets/effects/incendiary_burn_debuff.tres" id="2_effect"]
 
 [resource]
 script = ExtResource("1_unit_skill")
