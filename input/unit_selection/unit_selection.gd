@@ -28,18 +28,18 @@ func _input(event: InputEvent) -> void:
 	elif dragging and Input.is_action_pressed(SELECT_UNIT_ACTION):
 		end_position = _get_mouse_position()
 		_select_units_in_rect()
+		queue_redraw()
 	elif dragging and Input.is_action_just_released(SELECT_UNIT_ACTION):
 		end_position = _get_mouse_position()
 		_select_units_in_rect()
 		dragging = false
+		queue_redraw()
 
 func command_targeting_changed(command_id: String) -> void:
 	_command_targeting_active = not command_id.is_empty()
 	if _command_targeting_active:
 		dragging = false
-
-func _process(_delta: float) -> void:
-	queue_redraw()
+		queue_redraw()
 
 func _draw() -> void:
 	if dragging:
@@ -54,6 +54,7 @@ func _start_selection() -> void:
 		_emit_unit_selection_changed()
 	
 	dragging = true
+	queue_redraw()
 
 func _clear_selected_units() -> void:
 	for unit: Unit in _selected_units.values():

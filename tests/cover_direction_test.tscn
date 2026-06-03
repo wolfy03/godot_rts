@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/cover_direction_test.gd" id="1_cover_direction_test"]
+
+[node name="CoverDirectionTest" type="Node"]
+script = ExtResource("1_cover_direction_test")

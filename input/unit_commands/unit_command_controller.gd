@@ -34,6 +34,7 @@ var _skill_preview
 func _ready() -> void:
 	_skill_preview = UnitCommandPreviewScript.new()
 	add_child(_skill_preview)
+	set_process(false)
 
 func unit_selection_changed(selected_units: Dictionary) -> void:
 	_selected_units = selected_units
@@ -121,7 +122,11 @@ func _set_pending_command(command_id: String) -> void:
 		return
 
 	_pending_command_id = command_id
-	if not _is_pending_skill_command():
+	var preview_enabled := _is_pending_skill_command()
+	set_process(preview_enabled)
+	if preview_enabled:
+		_update_pending_skill_preview()
+	else:
 		_skill_preview.hide_preview()
 	command_targeting_changed.emit(_pending_command_id)
 

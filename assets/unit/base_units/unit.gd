@@ -13,6 +13,7 @@ const RIFLEMAN_SKILL := preload("res://assets/skills/grenade_throw.tres")
 const MEDIC_SKILL := preload("res://assets/skills/stimulant_injection.tres")
 const MACHINE_GUNNER_SKILL := preload("res://assets/skills/incendiary_round.tres")
 const SNIPER_SKILL := preload("res://assets/skills/weak_point_shot.tres")
+const GameTeamData := preload("res://assets/team/game_team.gd")
 const PLAYER_UNIT_MASK := 0b10
 const ENEMY_UNIT_MASK := 0b100
 enum UnitClass {
@@ -47,6 +48,7 @@ signal skills_changed
 @onready var cover_indicator: Sprite3D = %CoverIndicator
 
 @export var unit_class: UnitClass = UnitClass.RIFLEMAN
+@export var team_id: int = GameTeamData.AUTO
 @export var experience_per_veterancy_rank: int = 100
 @export var skill_experience_reward: int = 10
 @export var max_health: int = 100
@@ -105,6 +107,7 @@ var current_cover: Cover = null
 
 func _ready():
 	add_to_group("units")
+	add_to_group(GameTeamData.get_group_name(get_team_id()))
 	if collision_layer & PLAYER_UNIT_MASK:
 		add_to_group("selectable_units")
 	navigation_agent.velocity_computed.connect(_on_nav_velocity_computed)
@@ -204,27 +207,35 @@ func get_max_health() -> int:
 func get_current_health() -> int:
 	return _current_health
 
-func get_team_mask() -> int:
+func get_team_id() -> int:
+	if team_id != GameTeamData.AUTO:
+		return team_id
 	if collision_layer & PLAYER_UNIT_MASK:
-		return PLAYER_UNIT_MASK
+		return GameTeamData.PLAYER
 	if collision_layer & ENEMY_UNIT_MASK:
-		return ENEMY_UNIT_MASK
+		return GameTeamData.ENEMY
+	return GameTeamData.NEUTRAL
+
+func get_team_mask() -> int:
+	var team_mask := GameTeamData.get_collision_mask(get_team_id())
+	if team_mask != 0:
+		return team_mask
 	return int(collision_layer)
 
 func is_ally_unit(other: Unit) -> bool:
 	if not is_instance_valid(other) or other._is_dead:
 		return false
 
-	var team_mask := get_team_mask()
-	return team_mask != 0 and team_mask == other.get_team_mask()
+	var current_team_id := get_team_id()
+	return current_team_id != GameTeamData.NEUTRAL and current_team_id == other.get_team_id()
 
 func is_enemy_unit(other: Unit) -> bool:
 	if not is_instance_valid(other) or other._is_dead:
 		return false
 
-	var team_mask := get_team_mask()
-	var other_team_mask := other.get_team_mask()
-	return team_mask != 0 and other_team_mask != 0 and team_mask != other_team_mask
+	var current_team_id := get_team_id()
+	var other_team_id := other.get_team_id()
+	return current_team_id != GameTeamData.NEUTRAL and other_team_id != GameTeamData.NEUTRAL and current_team_id != other_team_id
 
 func can_heal_unit(target: Unit) -> bool:
 	if unit_class != UnitClass.MEDIC:
@@ -633,6 +644,25 @@ func _get_effect_projectile_evasion_chance() -> float:
 
 func get_projectile_evasion_chance() -> float:
 	return clampf(_get_effect_projectile_evasion_chance(), 0.0, 1.0)
+
+func _get_cover_projectile_evasion_chance() -> float:
+	var effect_evasion_chance := 0.0
+	for active_effect in _active_effects:
+		if _is_cover_effect(active_effect.effect):
+			effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
+	
+	return effect_evasion_chance
+
+func _get_non_cover_projectile_evasion_chance() -> float:
+	var effect_evasion_chance := 0.0
+	for active_effect in _active_effects:
+		if not _is_cover_effect(active_effect.effect):
+			effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
+	
+	return effect_evasion_chance
+
+func _is_cover_effect(effect: UnitEffect) -> bool:
+	return effect != null and COVER_EFFECT_IDS.has(effect.id)
 
 func heal(amount: int) -> int:
 	if amount <= 0 or _is_dead:
@@ -1155,7 +1185,7 @@ func _remove_cover_effect() -> void:
 func find_nearest_cover(radius: float) -> Cover:
 	return find_nearest_cover_to(global_position, radius)
 
-func find_nearest_cover_to(pos: Vector3, radius: float) -> Cover:
+func find_nearest_cover_to(pos: Vector3, radius: float, excluded_cover: Cover = null) -> Cover:
 	var covers = get_tree().get_nodes_in_group("covers")
 	var nearest_cover: Cover = null
 	var min_dist_sq = radius * radius
@@ -1163,6 +1193,8 @@ func find_nearest_cover_to(pos: Vector3, radius: float) -> Cover:
 	for node in covers:
 		var cover = node as Cover
 		if cover == null:
+			continue
+		if cover == excluded_cover:
 			continue
 		if not cover.has_available_slot(self):
 			continue
@@ -1206,7 +1238,7 @@ func receive_attack(attack_data: AttackData) -> int:
 func receive_projectile_impact(attack_data: AttackData) -> int:
 	if attack_data == null or _is_dead:
 		return 0
-	if _does_evade_projectile_impact():
+	if _does_evade_projectile_impact(attack_data):
 		return 0
 
 	var damage_dealt := receive_damage(_get_incoming_attack_damage(attack_data), attack_data.get_valid_source())
@@ -1225,13 +1257,30 @@ func _does_melee_attack_hit(attack_data: AttackData) -> bool:
 func _get_melee_attack_hit_chance(attack_data: AttackData) -> float:
 	return clampf(attack_data.accuracy - get_evasion_chance(), 0.0, 1.0)
 
-func _does_evade_projectile_impact() -> bool:
-	return randf() < get_projectile_impact_evasion_chance()
+func _does_evade_projectile_impact(attack_data: AttackData) -> bool:
+	return randf() < get_projectile_impact_evasion_chance(attack_data)
 
-func get_projectile_impact_evasion_chance() -> float:
+func get_projectile_impact_evasion_chance(attack_data: AttackData = null) -> float:
 	var stat_evasion := get_evasion_chance()
-	var cover_evasion := get_projectile_evasion_chance()
-	return clampf(1.0 - ((1.0 - stat_evasion) * (1.0 - cover_evasion)), 0.0, 1.0)
+	var effect_evasion := _get_applicable_projectile_effect_evasion_chance(attack_data)
+	return clampf(1.0 - ((1.0 - stat_evasion) * (1.0 - effect_evasion)), 0.0, 1.0)
+
+func _get_applicable_projectile_effect_evasion_chance(attack_data: AttackData) -> float:
+	var non_cover_evasion := _get_non_cover_projectile_evasion_chance()
+	var cover_evasion := _get_cover_projectile_evasion_chance() if _is_current_cover_protecting_against(attack_data) else 0.0
+	return clampf(1.0 - ((1.0 - non_cover_evasion) * (1.0 - cover_evasion)), 0.0, 1.0)
+
+func _is_current_cover_protecting_against(attack_data: AttackData) -> bool:
+	if current_cover == null or attack_data == null:
+		return false
+	if attack_data.kind != AttackData.AttackKind.RANGED:
+		return false
+	if attack_data.source_position == Vector3.INF:
+		return false
+	if not is_in_reserved_cover_slot():
+		return false
+	
+	return current_cover.is_protecting_against(attack_data.source_position, global_position)
 
 func _get_incoming_attack_damage(attack_data: AttackData) -> int:
 	return maxi(0, attack_data.damage - get_defense())

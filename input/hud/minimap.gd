@@ -19,7 +19,7 @@ const GROUND_PLANE_Y := 0.0
 @export var enemy_color: Color = Color(1.0, 0.18, 0.12, 1.0)
 @export var camera_view_color: Color = Color(0.95, 1.0, 0.86, 1.0)
 
-var _redraw_timer: float = 0.0
+var _redraw_timer: Timer
 var _cached_ground: CSGBox3D = null
 var _cached_world_bounds: Rect2 = Rect2()
 var _has_cached_world_bounds: bool = false
@@ -29,14 +29,14 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	_cache_static_world_bounds()
+	_setup_redraw_timer()
 
-func _process(delta: float) -> void:
-	_redraw_timer += delta
-	if _redraw_timer < redraw_interval:
-		return
-	
-	_redraw_timer = 0.0
-	queue_redraw()
+func _setup_redraw_timer() -> void:
+	_redraw_timer = Timer.new()
+	_redraw_timer.wait_time = maxf(redraw_interval, 0.001)
+	_redraw_timer.timeout.connect(queue_redraw)
+	add_child(_redraw_timer)
+	_redraw_timer.start()
 
 func _draw() -> void:
 	var panel_rect := Rect2(Vector2.ZERO, size)

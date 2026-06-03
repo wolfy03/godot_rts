@@ -13,7 +13,7 @@ const STATE_HEAL := "HEAL_STATE"
 @export var medic_heal_search_radius: float = 12.0
 
 var _unit: Unit
-var _decision_timer: float = 0.0
+var _decision_timer: Timer
 
 func _ready() -> void:
 	_unit = owner as Unit
@@ -22,17 +22,16 @@ func _ready() -> void:
 	
 	if _unit == null:
 		push_error("AIBrain must be owned by Unit or child of Unit.")
-		set_process(false)
+		return
 
-func _process(delta: float) -> void:
-	if _unit == null:
-		return
-	
-	_decision_timer -= delta
-	if _decision_timer > 0.0:
-		return
-	
-	_decision_timer = decision_interval
+	_decision_timer = Timer.new()
+	_decision_timer.wait_time = maxf(decision_interval, 0.01)
+	_decision_timer.timeout.connect(_on_decision_timer_timeout)
+	add_child(_decision_timer)
+	_decision_timer.start()
+	call_deferred("_on_decision_timer_timeout")
+
+func _on_decision_timer_timeout() -> void:
 	request_decision()
 
 func request_decision(allow_move_interrupt: bool = false) -> bool:

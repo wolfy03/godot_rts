@@ -6,8 +6,10 @@
 [ext_resource type="PackedScene" uid="uid://c4weaod0hg5p3" path="res://assets/unit/base_units/base_enemy.tscn" id="3_kvasj"]
 [ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="4_8th66"]
 [ext_resource type="PackedScene" uid="uid://djwhtmeln65rx" path="res://assets/unit/big_enemy.tscn" id="4_qrnxu"]
-[ext_resource type="Resource" path="res://assets/equipment/machine_gun.tres" id="4_v1acv"]
+[ext_resource type="Resource" uid="uid://bv5k77qk7j7xl" path="res://assets/equipment/machine_gun.tres" id="4_v1acv"]
 [ext_resource type="PackedScene" uid="uid://sytkho2rgyw4" path="res://assets/unit/cover.tscn" id="5_cover"]
+[ext_resource type="Script" uid="uid://b7b8lhixha7j8" path="res://assets/commander/ai_commander.gd" id="6_commander"]
+[ext_resource type="Script" uid="uid://hp6q2gdlpn77" path="res://assets/commander/mission_area.gd" id="7_mission_area"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_bk1f5"]
 vertices = PackedVector3Array(-24.5, 1, -25.5, -24.5, 1, 23.5, 24.5, 1, 23.5, 24.5, 1, -25.5)
@@ -60,6 +62,22 @@ light_energy = 2.5
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=892093567]
 
 [node name="Input" parent="." unique_id=419650762 instance=ExtResource("2_wmwms")]
+
+[node name="MissionArea" type="Node3D" parent="." unique_id=1582080173]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+script = ExtResource("7_mission_area")
+radius = 8.0
+
+[node name="Commanders" type="Node3D" parent="." unique_id=1239357131]
+
+[node name="PlayerCommander" type="Node3D" parent="Commanders" unique_id=652801428]
+script = ExtResource("6_commander")
+team_id = 1
+mission_area_path = NodePath("../../MissionArea")
+
+[node name="EnemyCommander" type="Node3D" parent="Commanders" unique_id=336371823]
+script = ExtResource("6_commander")
+mission_area_path = NodePath("../../MissionArea")
 
 [node name="CoversContainer" type="Node3D" parent="." unique_id=869847948]
 
