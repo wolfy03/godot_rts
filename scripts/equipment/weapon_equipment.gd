@@ -5,6 +5,12 @@ class_name WeaponEquipment
 @export var ranged_cooldown: float = 0.8
 @export var attack_range: float = 10.0
 @export var attacks_per_second: float = 0.0
+@export var spread_angle_degrees: float = 1.5
+@export var recoil_per_shot_degrees: float = 0.5
+@export var recoil_recovery_per_second: float = 2.0
+@export var max_recoil_degrees: float = 8.0
+@export var pellet_count: int = 1
+@export var pellet_spread_angle_degrees: float = 0.0
 @export var projectile_scene: PackedScene
 
 func _init() -> void:

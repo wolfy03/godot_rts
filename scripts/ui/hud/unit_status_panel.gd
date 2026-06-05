@@ -153,7 +153,11 @@ func _refresh() -> void:
 		_get_attack_damage(_selected_unit),
 		roundi(_selected_unit.get_accuracy(_selected_unit.equipped_weapon == null) * 100.0),
 	]
-	_defense_label.text = "방어력: %d / 회피율: %d%%" % [_selected_unit.get_defense(), roundi(_selected_unit.get_evasion_chance() * 100.0)]
+	_defense_label.text = "방어력: %d / 회피율: %d%% / 반동제어: %.1f" % [
+		_selected_unit.get_defense(),
+		roundi(_selected_unit.get_evasion_chance() * 100.0),
+		_selected_unit.recoil_control,
+	]
 	_effects_label.text = "효과: %s" % _get_effect_summary(_selected_unit)
 	_equipment_label.text = "장비: %s" % _get_equipment_summary(_selected_unit)
 

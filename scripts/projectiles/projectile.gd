@@ -6,10 +6,12 @@ class_name Projectile
 @export var max_lifetime: float = 4.0
 @export_flags_3d_physics var obstacle_collision_mask: int = 1
 @export_flags_3d_physics var unit_collision_mask: int = 6
+@export var player_impact_debug_duration: float = 1.25
 
 var _target: Unit
 var _attack_data: AttackData
 var _miss_direction: Vector3 = Vector3.ZERO
+var _direct_direction: Vector3 = Vector3.ZERO
 var _lifetime: float = 0.0
 
 func setup(target: Unit, attack_data: AttackData, miss_position: Vector3 = Vector3.INF) -> void:
@@ -20,6 +22,13 @@ func setup(target: Unit, attack_data: AttackData, miss_position: Vector3 = Vecto
 	if _is_aimed_miss() and miss_position != Vector3.INF:
 		_miss_direction = (miss_position - global_position).normalized()
 
+func setup_direction(attack_data: AttackData, direction: Vector3) -> void:
+	_target = null
+	_attack_data = attack_data
+	_direct_direction = direction.normalized()
+	if _attack_data != null and _attack_data.has_incendiary_trail:
+		_add_incendiary_trail()
+
 func _process(delta: float) -> void:
 	_lifetime += delta
 	if _lifetime >= max_lifetime:
@@ -28,6 +37,9 @@ func _process(delta: float) -> void:
 
 	if _is_aimed_miss():
 		_process_miss(delta)
+		return
+	if _direct_direction != Vector3.ZERO:
+		_process_direct(delta)
 		return
 
 	var target_position := _get_current_target_position()
@@ -63,6 +75,14 @@ func _process_miss(delta: float) -> void:
 	global_position = next_position
 	look_at(global_position + _miss_direction, Vector3.UP)
 
+func _process_direct(delta: float) -> void:
+	var next_position := global_position + _direct_direction * speed * delta
+	if _process_collision_between(global_position, next_position):
+		return
+
+	global_position = next_position
+	look_at(global_position + _direct_direction, Vector3.UP)
+
 func _is_aimed_miss() -> bool:
 	return _attack_data != null and _attack_data.has_resolved_aim and not _attack_data.aim_hits_target
 
@@ -72,6 +92,7 @@ func _process_collision_between(from: Vector3, to: Vector3) -> bool:
 		return false
 
 	var unit := collision.get("collider") as Unit
+	_spawn_player_impact_debug_marker(collision.get("position", to))
 	if unit != null:
 		_apply_impact_to(unit)
 
@@ -114,6 +135,41 @@ func _apply_impact_to(unit: Unit) -> void:
 		return
 
 	unit.receive_projectile_impact(_attack_data)
+
+func _spawn_player_impact_debug_marker(position: Vector3) -> void:
+	if _attack_data == null:
+		return
+	var source := _attack_data.get_valid_source()
+	if not (source is PlayerAgent):
+		return
+
+	var marker := MeshInstance3D.new()
+	marker.name = "PlayerImpactDebugMarker"
+	marker.global_position = position
+	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.09
+	mesh.height = 0.18
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(1.0, 0.0, 0.0, 1.0)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.0, 0.0, 1.0)
+	material.emission_energy_multiplier = 2.5
+	mesh.material = material
+	marker.mesh = mesh
+
+	var scene_root := get_tree().current_scene
+	if scene_root == null:
+		return
+	scene_root.add_child(marker)
+
+	var timer := Timer.new()
+	timer.one_shot = true
+	timer.wait_time = player_impact_debug_duration
+	timer.timeout.connect(marker.queue_free)
+	marker.add_child(timer)
+	timer.start()
 
 func _add_incendiary_trail() -> void:
 	var particles := GPUParticles3D.new()

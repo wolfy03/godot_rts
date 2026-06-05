@@ -16,8 +16,11 @@ var end_position: Vector2 = Vector2.ZERO
 
 var _selected_units: Dictionary = {}
 var _command_targeting_active: bool = false
+var _command_mode_enabled: bool = true
 
 func _input(event: InputEvent) -> void:
+	if not _command_mode_enabled:
+		return
 	if _command_targeting_active:
 		return
 
@@ -38,6 +41,12 @@ func _input(event: InputEvent) -> void:
 func command_targeting_changed(command_id: String) -> void:
 	_command_targeting_active = not command_id.is_empty()
 	if _command_targeting_active:
+		dragging = false
+		queue_redraw()
+
+func set_command_mode_enabled(enabled: bool) -> void:
+	_command_mode_enabled = enabled
+	if not _command_mode_enabled:
 		dragging = false
 		queue_redraw()
 

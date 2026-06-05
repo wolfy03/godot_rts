@@ -30,6 +30,7 @@ var _stop_command := UnitStopCommandScript.new()
 var _hold_position_command := UnitHoldPositionCommandScript.new()
 var _skill_command := UnitSkillCommandScript.new()
 var _skill_preview
+var _command_mode_enabled: bool = true
 
 func _ready() -> void:
 	_skill_preview = UnitCommandPreviewScript.new()
@@ -45,6 +46,8 @@ func _process(_delta: float) -> void:
 	_update_pending_skill_preview()
 
 func _input(event: InputEvent) -> void:
+	if not _command_mode_enabled:
+		return
 	if _is_pointer_over_command_panel(event):
 		return
 
@@ -75,12 +78,18 @@ func _input(event: InputEvent) -> void:
 		issue_hold_position_command()
 
 func begin_move_command() -> void:
+	if not _command_mode_enabled:
+		return
 	_toggle_pending_command(COMMAND_MOVE)
 
 func begin_attack_command() -> void:
+	if not _command_mode_enabled:
+		return
 	_toggle_pending_command(COMMAND_ATTACK)
 
 func begin_skill_command(skill_id: StringName) -> void:
+	if not _command_mode_enabled:
+		return
 	if _is_toggle_skill(skill_id):
 		_set_pending_command(COMMAND_NONE)
 		_skill_command.issue(_selected_units, skill_id, null, null)
@@ -89,12 +98,21 @@ func begin_skill_command(skill_id: StringName) -> void:
 	_toggle_pending_command(_get_skill_command_id(skill_id))
 
 func issue_stop_command() -> void:
+	if not _command_mode_enabled:
+		return
 	_set_pending_command(COMMAND_NONE)
 	_stop_command.issue(_selected_units)
 
 func issue_hold_position_command() -> void:
+	if not _command_mode_enabled:
+		return
 	_set_pending_command(COMMAND_NONE)
 	_hold_position_command.issue(_selected_units)
+
+func set_command_mode_enabled(enabled: bool) -> void:
+	_command_mode_enabled = enabled
+	if not _command_mode_enabled:
+		_set_pending_command(COMMAND_NONE)
 
 func _issue_command(attack_move: bool) -> void:
 	var click_position = _get_ground_mouse_position()

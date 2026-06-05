@@ -57,6 +57,8 @@ func request_decision(allow_move_interrupt: bool = false) -> bool:
 func _can_think() -> bool:
 	if not is_instance_valid(_unit) or _unit._is_dead:
 		return false
+	if _unit.is_player_agent():
+		return false
 	if _unit.state_machine == null:
 		return false
 	if _unit.blocks_autonomous_ai():

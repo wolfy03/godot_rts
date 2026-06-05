@@ -8,4 +8,3 @@ id = &"cover_medium_buff"
 display_name = "중간 엄폐"
 effect_type = 0
 indicator_color = Color(1, 0.5, 0, 1)
-projectile_evasion_chance = 0.5

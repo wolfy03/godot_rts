@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://d3qhbxkjqiwo2"]
+[gd_scene load_steps=7 format=3 uid="uid://d3qhbxkjqiwo2"]
 
 [ext_resource type="PackedScene" path="res://scenes/input/unit_commands/unit_command_controller.tscn" id="1_p6o0v"]
 [ext_resource type="PackedScene" path="res://scenes/input/unit_selection/unit_selection.tscn" id="2_q5whp"]
 [ext_resource type="Script" path="res://scripts/input/camera_controls.gd" id="3_lbtg2"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/hud.tscn" id="4_72mkc"]
 [ext_resource type="Script" path="res://scripts/input/input.gd" id="5_q82gu"]
+[ext_resource type="Script" path="res://scripts/input/agent_direct_controller.gd" id="6_agent"]
 
 [node name="Input" type="Node"]
 script = ExtResource("5_q82gu")
@@ -16,6 +17,11 @@ transform = Transform3D(1, 0, 0, 0, 0.573576, 0.819152, 0, -0.819152, 0.573576, 
 current = true
 fov = 55.0
 script = ExtResource("3_lbtg2")
+follow_target_path = NodePath("../../UnitsContainer/Agent")
+
+[node name="AgentDirectController" type="Node" parent="."]
+script = ExtResource("6_agent")
+camera_follow_agent_in_direct_mode = false
 
 [node name="UnitSelection" parent="." instance=ExtResource("2_q5whp")]
 

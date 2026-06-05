@@ -1,17 +1,17 @@
 [gd_scene format=3 uid="uid://dr3dx0phgxkof"]
 
-[ext_resource type="Script" path="res://scripts/units/unit.gd" id="1_n14s1"]
-[ext_resource type="Script" path="res://scripts/states/state_machine.gd" id="2_dvoc7"]
-[ext_resource type="Script" path="res://scripts/states/idle_state.gd" id="3_4ksry"]
-[ext_resource type="Script" path="res://scripts/states/move_state.gd" id="4_n0caq"]
-[ext_resource type="Script" path="res://scripts/states/attack_state.gd" id="5_pqb5e"]
-[ext_resource type="Script" path="res://scripts/states/hold_position_state.gd" id="6_7snhb"]
-[ext_resource type="Script" path="res://scripts/states/chase_state.gd" id="7_ke0u6"]
+[ext_resource type="Script" uid="uid://cnox1d7ydrbq0" path="res://scripts/units/unit.gd" id="1_n14s1"]
+[ext_resource type="Script" uid="uid://dmhcuqhprgs37" path="res://scripts/states/state_machine.gd" id="2_dvoc7"]
+[ext_resource type="Script" uid="uid://c0picav4x304h" path="res://scripts/states/idle_state.gd" id="3_4ksry"]
+[ext_resource type="Script" uid="uid://d373movc3i8sy" path="res://scripts/states/move_state.gd" id="4_n0caq"]
+[ext_resource type="Script" uid="uid://d2m8y74heep05" path="res://scripts/states/attack_state.gd" id="5_pqb5e"]
+[ext_resource type="Script" uid="uid://bwdvkqus1vwlv" path="res://scripts/states/hold_position_state.gd" id="6_7snhb"]
+[ext_resource type="Script" uid="uid://c4f63j75f78dn" path="res://scripts/states/chase_state.gd" id="7_ke0u6"]
 [ext_resource type="Resource" uid="uid://86nde05w110m" path="res://assets/equipment/rifle.tres" id="8_rifle"]
-[ext_resource type="Script" path="res://scripts/states/take_cover_state.gd" id="9_tc"]
+[ext_resource type="Script" uid="uid://bawarbyy1oamq" path="res://scripts/states/take_cover_state.gd" id="9_tc"]
 [ext_resource type="Texture2D" uid="uid://v617ubq8frct" path="res://assets/unit/shield.png" id="10_shield"]
-[ext_resource type="Script" path="res://scripts/ai/ai_brain.gd" id="11_ai"]
-[ext_resource type="Script" path="res://scripts/states/heal_state.gd" id="12_heal"]
+[ext_resource type="Script" uid="uid://fm73vjd616pa" path="res://scripts/ai/ai_brain.gd" id="11_ai"]
+[ext_resource type="Script" uid="uid://b5v8iwi5qn734" path="res://scripts/states/heal_state.gd" id="12_heal"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_body"]
 radius = 0.38
@@ -55,6 +55,29 @@ shape = SubResource("SphereShape3D_body")
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 mesh = SubResource("CapsuleMesh_unit")
+
+[node name="AimPoints" type="Node3D" parent="." unique_id=721004991]
+
+[node name="Head" type="Marker3D" parent="AimPoints" unique_id=721004992]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7448617, 0)
+
+[node name="Chest" type="Marker3D" parent="AimPoints" unique_id=721004993]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48908067, 0)
+
+[node name="Stomach" type="Marker3D" parent="AimPoints" unique_id=721004994]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2820881, 0)
+
+[node name="LeftArm" type="Marker3D" parent="AimPoints" unique_id=721004995]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.24376601, 0.68, 0)
+
+[node name="RightArm" type="Marker3D" parent="AimPoints" unique_id=721004996]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.23598039, 0.68, 0)
+
+[node name="LeftLeg" type="Marker3D" parent="AimPoints" unique_id=721004997]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.18, 0.18, 0)
+
+[node name="RightLeg" type="Marker3D" parent="AimPoints" unique_id=721004998]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, 0.18, 0)
 
 [node name="UnitSelectedSprite" type="MeshInstance3D" parent="." unique_id=301704044]
 unique_name_in_owner = true
@@ -123,10 +146,6 @@ unique_name_in_owner = true
 script = ExtResource("2_dvoc7")
 initial_state_id = "IDLE_STATE"
 
-[node name="AIBrain" type="Node" parent="." unique_id=1490140710]
-unique_name_in_owner = true
-script = ExtResource("11_ai")
-
 [node name="IdleState" type="Node3D" parent="StateMachine" unique_id=1121897770]
 script = ExtResource("3_4ksry")
 
@@ -147,6 +166,10 @@ script = ExtResource("9_tc")
 
 [node name="HealState" type="Node3D" parent="StateMachine" unique_id=1396895783]
 script = ExtResource("12_heal")
+
+[node name="AIBrain" type="Node" parent="." unique_id=1490140710]
+unique_name_in_owner = true
+script = ExtResource("11_ai")
 
 [connection signal="body_entered" from="AttackRangeArea" to="StateMachine/ChaseState" method="_on_attack_range_area_body_entered"]
 [connection signal="body_exited" from="AttackRangeArea" to="StateMachine/AttackState" method="_on_attack_range_area_body_exited"]

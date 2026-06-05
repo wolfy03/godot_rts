@@ -8,4 +8,3 @@ id = &"cover_high_buff"
 display_name = "완전 엄폐"
 effect_type = 0
 indicator_color = Color(0, 1, 0, 1)
-projectile_evasion_chance = 0.75

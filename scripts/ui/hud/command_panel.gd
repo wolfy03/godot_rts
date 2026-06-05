@@ -26,6 +26,7 @@ var _skill_buttons: Array[Button] = []
 var _skill_cooldown_labels: Array[Label] = []
 var _primary_skill_unit: Unit = null
 var _cooldown_refresh_timer: Timer
+var _command_mode_enabled: bool = true
 
 func _ready() -> void:
 	add_to_group("command_panel_ui")
@@ -44,7 +45,7 @@ func _ready() -> void:
 func unit_selection_changed(selected_units: Dictionary) -> void:
 	_selected_units = selected_units
 	var selected_count := selected_units.size()
-	visible = selected_count > 0
+	visible = _command_mode_enabled and selected_count > 0
 	_selection_label.text = "선택 유닛 %d" % selected_count
 	_update_skill_buttons()
 	_update_cooldown_refresh_timer()
@@ -64,6 +65,13 @@ func command_targeting_changed(command_id: String) -> void:
 			button.button_pressed = _is_skill_toggled(skill.id)
 		else:
 			button.button_pressed = command_id == _get_skill_command_id(skill.id)
+
+func set_command_mode_enabled(enabled: bool) -> void:
+	_command_mode_enabled = enabled
+	visible = _command_mode_enabled and _selected_units.size() > 0
+	if not _command_mode_enabled:
+		command_targeting_changed(COMMAND_NONE)
+	_update_cooldown_refresh_timer()
 
 func _setup_cooldown_refresh_timer() -> void:
 	_cooldown_refresh_timer = Timer.new()

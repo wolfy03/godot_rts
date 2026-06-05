@@ -16,6 +16,17 @@ const SNIPER_SKILL := preload("res://assets/skills/weak_point_shot.tres")
 const GameTeamData := preload("res://scripts/team/game_team.gd")
 const PLAYER_UNIT_MASK := 0b10
 const ENEMY_UNIT_MASK := 0b100
+const AIM_POINT_WEIGHTS := {
+	&"Head": 0.2,
+	&"Chest": 0.2,
+	&"Stomach": 0.2,
+	&"LeftArm": 0.1,
+	&"RightArm": 0.1,
+	&"LeftLeg": 0.1,
+	&"RightLeg": 0.1,
+}
+const MUZZLE_HEIGHT := 0.7
+
 enum UnitClass {
 	RIFLEMAN,
 	MEDIC,
@@ -61,10 +72,14 @@ signal skills_changed
 @export_range(0.0, 1.0, 0.01) var ranged_accuracy: float = 0.5
 @export_range(0.0, 1.0, 0.01) var melee_accuracy: float = 1.0
 @export_range(0.0, 1.0, 0.01) var evasion_chance: float = 0.0
+@export var recoil_control: float = 1.0
 @export_file("*.png") var portrait_image_path: String = "res://assets/unit/portraits/infantry_portrait.png"
 @export var melee_range: float = 3.0
 @export var melee_damage: int = 40
 @export var melee_cooldown: float = 1.0
+@export var ranged_field_of_view_degrees: float = 90.0
+@export var ranged_max_spread_radius: float = 1.8
+@export_flags_3d_physics var ranged_aim_obstacle_mask: int = 1
 @export var equipment: Array[Equipment] = []
 @export var equipped_weapon: WeaponEquipment
 @export var common_skills: Array[UnitSkill] = []
@@ -85,6 +100,7 @@ var equipment_attack_range_bonus: float = 0.0
 var equipment_attack_speed_multiplier: float = 1.0
 var equipment_accuracy_bonus: float = 0.0
 var equipment_evasion_bonus: float = 0.0
+var current_recoil_degrees: float = 0.0
 
 var veterancy: int = 0
 var experience: int = 0
@@ -115,7 +131,7 @@ var current_cover: Cover = null
 func _ready():
 	add_to_group("units")
 	add_to_group(GameTeamData.get_group_name(get_team_id()))
-	if is_player_controllable:
+	if is_player_controllable or (get_team_id() == GameTeamData.PLAYER and not is_player_agent()):
 		add_to_group("selectable_units")
 	navigation_agent.velocity_computed.connect(_on_nav_velocity_computed)
 	_apply_equipment()
@@ -232,6 +248,9 @@ func get_team_mask() -> int:
 
 func is_agent_unit() -> bool:
 	return is_agent
+
+func is_player_agent() -> bool:
+	return false
 
 func is_ally_unit(other: Unit) -> bool:
 	if not is_instance_valid(other) or other._is_dead:
@@ -510,8 +529,15 @@ func can_attack_unit(target: Unit) -> bool:
 		return false
 	if not is_enemy_unit(target):
 		return false
+	if equipped_weapon != null and not _is_target_in_attack_area(target):
+		return false
 
 	return get_distance_to_unit(target) <= get_attack_range()
+
+func _is_target_in_attack_area(target: Unit) -> bool:
+	if attack_range_area == null:
+		return true
+	return attack_range_area.get_overlapping_bodies().has(target)
 
 func get_attack_range() -> float:
 	var melee_attack_range := get_melee_range()
@@ -574,30 +600,167 @@ func should_prioritize_cover_against(target: Unit) -> bool:
 	return get_distance_to_unit(target) > melee_range
 
 func _fire_projectile(target: Unit, attack_data: AttackData) -> void:
-	var resolved_attack_data := attack_data.with_resolved_aim(_does_projectile_aim_hit(attack_data))
+	var aim_solution := _build_ranged_aim_solution(target)
+	if aim_solution == null:
+		return
+
+	var resolved_attack_data := attack_data.with_resolved_aim(true)
 	if equipped_weapon.projectile_scene == null:
-		if resolved_attack_data.aim_hits_target:
+		if aim_solution.hit_quality >= 1.0:
 			target.receive_projectile_impact(resolved_attack_data)
 		return
 
-	var projectile := equipped_weapon.projectile_scene.instantiate() as Projectile
-	if projectile == null:
-		if resolved_attack_data.aim_hits_target:
-			target.receive_projectile_impact(resolved_attack_data)
+	var muzzle_position := get_muzzle_position()
+	var projectile_direction := aim_solution.impact_position - muzzle_position
+	if projectile_direction.length_squared() < 0.001:
 		return
 
-	get_tree().current_scene.add_child(projectile)
-	projectile.global_position = global_position + Vector3.UP * 0.7
-	projectile.setup(target, resolved_attack_data, _get_projectile_miss_position(target))
+	var fired_count := _spawn_weapon_projectiles(muzzle_position, projectile_direction.normalized(), resolved_attack_data)
+	if fired_count == 0 and aim_solution.hit_quality >= 1.0:
+		target.receive_projectile_impact(resolved_attack_data)
+	_apply_weapon_recoil()
 
-func _get_projectile_miss_position(target: Unit) -> Vector3:
-	var target_position := target.global_position + Vector3.UP * 0.6
-	var miss_direction := Vector3(randf_range(-1.0, 1.0), randf_range(-0.65, 0.85), randf_range(-1.0, 1.0))
-	if miss_direction.length_squared() < 0.001:
-		miss_direction = Vector3.RIGHT
-	miss_direction = miss_direction.normalized()
-	var miss_distance := randf_range(0.75, 1.8)
-	return target_position + miss_direction * miss_distance
+func _build_ranged_aim_solution(target: Unit) -> RangedAimSolution:
+	if not is_instance_valid(target) or target._is_dead:
+		return null
+	if not _is_target_in_ranged_field_of_view(target):
+		return null
+
+	var visible_points := _get_visible_aim_points(target)
+	if visible_points.is_empty():
+		return null
+
+	var hit_quality := 0.0
+	for point_data in visible_points:
+		hit_quality += float(point_data.weight)
+	hit_quality = clampf(hit_quality, 0.0, 1.0)
+
+	var selected_point := _pick_weighted_aim_point(visible_points)
+	var spread_radius := ranged_max_spread_radius * (1.0 - hit_quality)
+	var impact_position := selected_point.position
+	if spread_radius > 0.001:
+		impact_position += _get_random_spread_offset(spread_radius)
+
+	return RangedAimSolution.new(hit_quality, impact_position)
+
+func _is_target_in_ranged_field_of_view(target: Unit) -> bool:
+	var to_target := target.global_position - global_position
+	to_target.y = 0.0
+	if to_target.length_squared() < 0.001:
+		return true
+
+	var forward := -global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.001:
+		return true
+
+	var half_angle := deg_to_rad(maxf(0.0, ranged_field_of_view_degrees) * 0.5)
+	var required_dot := cos(half_angle)
+	return forward.normalized().dot(to_target.normalized()) >= required_dot
+
+func _get_visible_aim_points(target: Unit) -> Array[AimPointData]:
+	var visible_points: Array[AimPointData] = []
+	var muzzle_position := get_muzzle_position()
+	for marker in target.get_aim_points():
+		var point_name := StringName(marker.name)
+		var weight := float(AIM_POINT_WEIGHTS.get(point_name, 0.0))
+		if weight <= 0.0:
+			continue
+		if _has_clear_ranged_aim_to(muzzle_position, marker.global_position, target):
+			visible_points.append(AimPointData.new(marker.global_position, weight))
+	return visible_points
+
+func get_aim_points() -> Array[Marker3D]:
+	var points: Array[Marker3D] = []
+	var aim_points_parent := get_node_or_null("AimPoints")
+	if aim_points_parent == null:
+		return points
+	for child in aim_points_parent.get_children():
+		var marker := child as Marker3D
+		if marker != null:
+			points.append(marker)
+	return points
+
+func get_muzzle_position() -> Vector3:
+	return global_position + Vector3.UP * MUZZLE_HEIGHT
+
+func _spawn_weapon_projectiles(muzzle_position: Vector3, base_direction: Vector3, attack_data: AttackData) -> int:
+	if equipped_weapon == null or equipped_weapon.projectile_scene == null:
+		return 0
+
+	var pellet_count := maxi(1, equipped_weapon.pellet_count)
+	var fired_count := 0
+	for pellet_index in pellet_count:
+		var projectile := equipped_weapon.projectile_scene.instantiate() as Projectile
+		if projectile == null:
+			continue
+		get_tree().current_scene.add_child(projectile)
+		projectile.global_position = muzzle_position
+		var pellet_spread := equipped_weapon.pellet_spread_angle_degrees if pellet_count > 1 else 0.0
+		projectile.setup_direction(attack_data, get_weapon_spread_direction(base_direction, pellet_spread))
+		fired_count += 1
+	return fired_count
+
+func _has_clear_ranged_aim_to(from: Vector3, to: Vector3, target: Unit) -> bool:
+	if ranged_aim_obstacle_mask == 0:
+		return true
+	var world := get_world_3d()
+	if world == null:
+		return false
+
+	var query := PhysicsRayQueryParameters3D.create(from, to, ranged_aim_obstacle_mask)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var exclusions: Array[RID] = [get_rid()]
+	if is_instance_valid(target):
+		exclusions.append(target.get_rid())
+	query.exclude = exclusions
+
+	return world.direct_space_state.intersect_ray(query).is_empty()
+
+func _pick_weighted_aim_point(points: Array[AimPointData]) -> AimPointData:
+	var total_weight := 0.0
+	for point_data in points:
+		total_weight += point_data.weight
+
+	var roll := randf() * total_weight
+	for point_data in points:
+		roll -= point_data.weight
+		if roll <= 0.0:
+			return point_data
+	return points.back()
+
+func _get_random_spread_offset(radius: float) -> Vector3:
+	var offset := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
+	if offset.length_squared() < 0.001:
+		offset = Vector3.RIGHT
+	return offset.normalized() * randf_range(0.0, radius)
+
+func get_weapon_spread_direction(base_direction: Vector3, extra_spread_degrees: float = 0.0) -> Vector3:
+	if base_direction.length_squared() < 0.001:
+		return base_direction
+	if equipped_weapon == null:
+		return base_direction.normalized()
+
+	var spread_degrees := equipped_weapon.spread_angle_degrees + current_recoil_degrees + extra_spread_degrees
+	if spread_degrees <= 0.001:
+		return base_direction.normalized()
+
+	return _get_random_direction_in_cone(base_direction.normalized(), deg_to_rad(spread_degrees))
+
+func _get_random_direction_in_cone(base_direction: Vector3, cone_angle: float) -> Vector3:
+	var forward := base_direction.normalized()
+	var reference := Vector3.UP
+	if absf(forward.dot(reference)) > 0.98:
+		reference = Vector3.RIGHT
+
+	var right := forward.cross(reference).normalized()
+	var up := right.cross(forward).normalized()
+	var radius := tan(cone_angle)
+	var angle := randf() * TAU
+	var distance := sqrt(randf()) * radius
+	var deviated := forward + right * cos(angle) * distance + up * sin(angle) * distance
+	return deviated.normalized()
 
 func _create_melee_attack_data() -> AttackData:
 	return AttackData.new(self, get_melee_damage(), get_accuracy(true), AttackData.AttackKind.MELEE)
@@ -1337,6 +1500,7 @@ func _on_nav_velocity_computed(safe_velocity: Vector3) -> void:
 func _physics_process(_delta: float) -> void:
 	_process_active_effects(_delta)
 	_process_skill_cooldowns(_delta)
+	_process_recoil_recovery(_delta)
 	_process_queued_skill_command()
 	if status_indicator_space != null and status_indicator_space.visible:
 		_update_status_indicator_space_position()
@@ -1371,6 +1535,23 @@ func _look_at_ground_position(target_position: Vector3) -> void:
 	if global_position.distance_squared_to(look_target) > 0.001:
 		look_at(look_target, Vector3.UP)
 
+func _process_recoil_recovery(delta: float) -> void:
+	if equipped_weapon == null:
+		current_recoil_degrees = 0.0
+		return
+
+	var recovery_speed := equipped_weapon.recoil_recovery_per_second * maxf(0.0, recoil_control)
+	current_recoil_degrees = maxf(0.0, current_recoil_degrees - recovery_speed * delta)
+
+func _apply_weapon_recoil() -> void:
+	if equipped_weapon == null:
+		return
+
+	current_recoil_degrees = minf(
+		equipped_weapon.max_recoil_degrees,
+		current_recoil_degrees + maxf(0.0, equipped_weapon.recoil_per_shot_degrees)
+	)
+
 func _emit_health_changed() -> void:
 	health_changed.emit(_current_health, get_max_health())
 
@@ -1379,6 +1560,22 @@ func _emit_veterancy_changed() -> void:
 
 func _emit_agent_level_changed() -> void:
 	agent_level_changed.emit(agent_level, agent_experience, get_next_agent_level_experience())
+
+class AimPointData:
+	var position: Vector3
+	var weight: float
+
+	func _init(point_position: Vector3, point_weight: float) -> void:
+		position = point_position
+		weight = point_weight
+
+class RangedAimSolution:
+	var hit_quality: float
+	var impact_position: Vector3
+
+	func _init(solution_hit_quality: float, solution_impact_position: Vector3) -> void:
+		hit_quality = solution_hit_quality
+		impact_position = solution_impact_position
 
 class ActiveUnitEffect:
 	var instance_id: int
