@@ -172,7 +172,7 @@ func _get_effect_summary(unit: Unit) -> String:
 	var debuffs: Array[String] = []
 
 	for active_effect in unit.get_active_effects():
-		var effect := active_effect.effect
+		var effect: UnitEffect = active_effect.effect
 		if effect == null:
 			continue
 

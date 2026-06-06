@@ -66,8 +66,7 @@ func _physics_process(delta: float) -> void:
 
 func _process_agent_control(delta: float) -> void:
 	_attack_timer = maxf(0.0, _attack_timer - delta)
-	if _aim_position != Vector3.INF:
-		_look_at_ground_position(_aim_position)
+	_face_mouse_aim_position()
 
 	var move_speed := navigation_agent.max_speed if navigation_agent != null else _base_navigation_max_speed
 	velocity = _move_direction * move_speed
@@ -79,6 +78,17 @@ func _process_agent_control(delta: float) -> void:
 	if _fire_requested and _attack_timer <= 0.0:
 		if perform_direct_ranged_attack_at(_aim_position):
 			_attack_timer = _get_agent_attack_cooldown()
+
+func _face_mouse_aim_position() -> void:
+	if _aim_position == Vector3.INF:
+		return
+
+	var face_direction := _aim_position - global_position
+	face_direction.y = 0.0
+	if face_direction.length_squared() < 0.001:
+		return
+
+	look_at(global_position + face_direction, Vector3.UP)
 
 func perform_direct_ranged_attack_at(target_position: Vector3) -> bool:
 	if equipped_weapon == null or equipped_weapon.projectile_scene == null:

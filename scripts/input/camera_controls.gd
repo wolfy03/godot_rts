@@ -16,8 +16,12 @@ const ACTION_MOVE_DOWN := "Move Camera Down"
 @export var min_zoom_distance: float = 7.0
 @export var max_zoom_distance: float = 28.0
 @export var rotation_sensitivity: float = 0.005
-@export var min_pitch_degrees: float = 30.0
-@export var max_pitch_degrees: float = 75.0
+@export var min_pitch_degrees: float = 10.0
+@export var max_pitch_degrees: float = 90.0
+@export var auto_rotate_with_follow_movement: bool = true
+@export var auto_rotation_smooth_speed: float = 4.0
+@export var auto_rotation_min_movement_distance: float = 0.03
+@export var manual_camera_control_cooldown_seconds: float = 1.25
 
 var _keyboard_move_direction: Vector2 = Vector2.ZERO
 var _keyboard_camera_controls_enabled: bool = true
@@ -29,6 +33,9 @@ var _yaw: float = 0.0
 var _pitch: float = deg_to_rad(55.0)
 var _is_orbit_rotating: bool = false
 var _follow_target: Node3D = null
+var _last_follow_target_position: Vector3 = Vector3.ZERO
+var _has_last_follow_target_position: bool = false
+var _manual_camera_control_cooldown: float = 0.0
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
@@ -45,21 +52,26 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	_manual_camera_control_cooldown = maxf(0.0, _manual_camera_control_cooldown - delta)
 	var move_direction := _keyboard_move_direction
 	if _mouse_edge_camera_controls_enabled:
 		move_direction += _get_mouse_edge_move_direction()
 	if move_direction.length_squared() > 1.0:
 		move_direction = move_direction.normalized()
 
+	if move_direction != Vector2.ZERO:
+		_mark_manual_camera_control()
 	_focus_position += _get_world_move_direction(move_direction) * camera_move_speed * delta
 	_update_follow_focus(delta)
 	_apply_camera_transform()
 
 func adjust_zoom(steps: float) -> void:
+	_mark_manual_camera_control()
 	_zoom_distance = clampf(_zoom_distance - steps * zoom_step, min_zoom_distance, max_zoom_distance)
 	_apply_camera_transform()
 
 func rotate_orbit(relative_motion: Vector2) -> void:
+	_mark_manual_camera_control()
 	_yaw -= relative_motion.x * rotation_sensitivity
 	_pitch = clampf(
 		_pitch - relative_motion.y * rotation_sensitivity,
@@ -88,6 +100,30 @@ func set_pitch_degrees(degrees: float) -> void:
 
 func get_pitch_degrees() -> float:
 	return rad_to_deg(_pitch)
+
+func set_yaw_radians(yaw: float) -> void:
+	_yaw = yaw
+	_apply_camera_transform()
+
+func get_yaw_radians() -> float:
+	return _yaw
+
+func set_manual_camera_control_cooldown(seconds: float) -> void:
+	_manual_camera_control_cooldown = maxf(0.0, seconds)
+
+func rotate_towards_follow_movement(movement: Vector3, delta: float) -> void:
+	if not auto_rotate_with_follow_movement or _manual_camera_control_cooldown > 0.0:
+		return
+
+	movement.y = 0.0
+	if movement.length() < auto_rotation_min_movement_distance:
+		return
+
+	var movement_direction := movement.normalized()
+	var target_yaw := atan2(-movement_direction.x, -movement_direction.z)
+	var rotation_weight := clampf(auto_rotation_smooth_speed * delta, 0.0, 1.0)
+	_yaw = lerp_angle(_yaw, target_yaw, rotation_weight)
+	_apply_camera_transform()
 
 func get_focus_for_follow_target(current_focus: Vector3, target_position: Vector3) -> Vector3:
 	var focus_xz := Vector2(current_focus.x, current_focus.z)
@@ -172,6 +208,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.button_index == MOUSE_BUTTON_MIDDLE:
 		_is_orbit_rotating = event.pressed
+		if event.pressed:
+			_mark_manual_camera_control()
 		get_viewport().set_input_as_handled()
 
 func _initialize_orbit_from_current_transform() -> void:
@@ -223,11 +261,20 @@ func _update_follow_focus(delta: float) -> void:
 	if _follow_target == null or not is_instance_valid(_follow_target):
 		_resolve_follow_target()
 	if _follow_target == null:
+		_has_last_follow_target_position = false
 		return
+
+	if _has_last_follow_target_position:
+		rotate_towards_follow_movement(_follow_target.global_position - _last_follow_target_position, delta)
+	_last_follow_target_position = _follow_target.global_position
+	_has_last_follow_target_position = true
 
 	var target_focus := get_focus_for_follow_target(_focus_position, _follow_target.global_position)
 	var follow_weight := clampf(follow_smooth_speed * delta, 0.0, 1.0)
 	_focus_position = _focus_position.lerp(target_focus, follow_weight)
+
+func _mark_manual_camera_control() -> void:
+	_manual_camera_control_cooldown = manual_camera_control_cooldown_seconds
 
 func _apply_camera_transform() -> void:
 	var pitch := clampf(_pitch, deg_to_rad(min_pitch_degrees), deg_to_rad(max_pitch_degrees))

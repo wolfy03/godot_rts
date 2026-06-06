@@ -1,8 +1,18 @@
-[gd_scene load_steps=4 format=3 uid="uid://dfwdpeam0lwrg"]
+[gd_scene load_steps=6 format=3 uid="uid://dfwdpeam0lwrg"]
 
 [ext_resource type="PackedScene" path="res://scenes/units/base_units/base_unit.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scripts/agent/player_agent.gd" id="2_agent"]
 [ext_resource type="Resource" uid="uid://cd20xwi3rly3r" path="res://assets/equipment/sniper_rifle.tres" id="3_sniper"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_facing"]
+albedo_color = Color(1, 0.16, 0.05, 1)
+emission_enabled = true
+emission = Color(1, 0.12, 0.03, 1)
+emission_energy_multiplier = 1.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_facing"]
+material = SubResource("StandardMaterial3D_facing")
+size = Vector3(0.16, 0.12, 0.75)
 
 [node name="PlayerAgent" instance=ExtResource("1_base")]
 script = ExtResource("2_agent")
@@ -10,3 +20,8 @@ unit_class = 3
 is_agent = true
 is_player_controllable = false
 equipped_weapon = ExtResource("3_sniper")
+
+[node name="FacingIndicator" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, -0.55)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_facing")

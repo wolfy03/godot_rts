@@ -45,6 +45,8 @@ func _process_state(delta: float) -> void:
 	_unit._look_at_ground_position(_attack_target.global_position)
 
 	if _attack_timer <= 0:
+		if _unit.should_ai_hold_fire_for_recoil():
+			return
 		_unit.perform_attack(_attack_target)
 		_attack_timer = _unit.get_attack_cooldown_for(_attack_target)
 

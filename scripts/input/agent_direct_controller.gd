@@ -24,9 +24,13 @@ var _aim_camera_offset: Vector3 = Vector3.ZERO
 var _aim_line_instance: MeshInstance3D
 var _aim_line_mesh: ImmediateMesh
 var _aim_line_material: StandardMaterial3D
+var _spread_preview_instance: MeshInstance3D
+var _spread_preview_mesh: ImmediateMesh
+var _spread_preview_material: StandardMaterial3D
 
 func _ready() -> void:
 	_setup_aim_line()
+	_setup_spread_preview()
 
 func set_command_mode_enabled(enabled: bool) -> void:
 	if _command_mode_enabled == enabled:
@@ -45,6 +49,7 @@ func set_command_mode_enabled(enabled: bool) -> void:
 	if _command_mode_enabled:
 		_aim_camera_offset = Vector3.ZERO
 		_set_aim_line_visible(false)
+		_set_spread_preview_visible(false)
 
 func _physics_process(delta: float) -> void:
 	if _command_mode_enabled:
@@ -66,6 +71,7 @@ func _physics_process(delta: float) -> void:
 	_update_aim_camera_offset(delta, aiming)
 	_update_camera(delta)
 	_update_aim_line(aiming, aim_position)
+	_update_spread_preview(aiming, aim_position)
 
 func _get_valid_agent() -> PlayerAgent:
 	if _active_agent != null and is_instance_valid(_active_agent):
@@ -229,6 +235,23 @@ func _setup_aim_line() -> void:
 	_aim_line_instance.visible = false
 	add_child(_aim_line_instance)
 
+func _setup_spread_preview() -> void:
+	_spread_preview_mesh = ImmediateMesh.new()
+	_spread_preview_material = StandardMaterial3D.new()
+	_spread_preview_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_spread_preview_material.albedo_color = Color(1.0, 0.18, 0.08, 0.95)
+	_spread_preview_material.emission_enabled = true
+	_spread_preview_material.emission = Color(1.0, 0.1, 0.02, 1.0)
+	_spread_preview_material.emission_energy_multiplier = 1.6
+	_spread_preview_material.no_depth_test = true
+
+	_spread_preview_instance = MeshInstance3D.new()
+	_spread_preview_instance.name = "AgentSpreadPreview"
+	_spread_preview_instance.mesh = _spread_preview_mesh
+	_spread_preview_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_spread_preview_instance.visible = false
+	add_child(_spread_preview_instance)
+
 func _update_aim_line(aiming: bool, aim_position: Vector3) -> void:
 	if not aiming or aim_position == Vector3.INF or _active_agent == null:
 		_set_aim_line_visible(false)
@@ -247,6 +270,47 @@ func _update_aim_line(aiming: bool, aim_position: Vector3) -> void:
 	_aim_line_mesh.surface_add_vertex(end_position)
 	_aim_line_mesh.surface_end()
 	_set_aim_line_visible(true)
+
+func _update_spread_preview(aiming: bool, aim_position: Vector3) -> void:
+	if not aiming or aim_position == Vector3.INF or _active_agent == null:
+		_set_spread_preview_visible(false)
+		return
+
+	var muzzle_position := _active_agent.get_muzzle_position()
+	var aim_direction := aim_position - muzzle_position
+	var aim_distance := aim_direction.length()
+	if aim_distance < 0.01:
+		_set_spread_preview_visible(false)
+		return
+
+	var spread_angle := deg_to_rad(_active_agent.get_current_weapon_spread_angle_degrees())
+	var radius := tan(spread_angle) * aim_distance
+	if radius <= 0.001:
+		radius = 0.03
+
+	_draw_spread_circle(aim_position, aim_direction.normalized(), radius)
+	_set_spread_preview_visible(true)
+
+func _draw_spread_circle(center: Vector3, normal: Vector3, radius: float) -> void:
+	var forward := normal.normalized()
+	var reference := Vector3.UP
+	if absf(forward.dot(reference)) > 0.98:
+		reference = Vector3.RIGHT
+
+	var right := forward.cross(reference).normalized()
+	var up := right.cross(forward).normalized()
+	var segments := 48
+
+	_spread_preview_mesh.clear_surfaces()
+	_spread_preview_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _spread_preview_material)
+	for index in segments:
+		var angle_a := TAU * float(index) / float(segments)
+		var angle_b := TAU * float(index + 1) / float(segments)
+		var point_a := center + (right * cos(angle_a) + up * sin(angle_a)) * radius
+		var point_b := center + (right * cos(angle_b) + up * sin(angle_b)) * radius
+		_spread_preview_mesh.surface_add_vertex(point_a)
+		_spread_preview_mesh.surface_add_vertex(point_b)
+	_spread_preview_mesh.surface_end()
 
 func _get_obstructed_aim_end(start_position: Vector3, end_position: Vector3) -> Vector3:
 	var world := get_viewport().get_world_3d()
@@ -268,6 +332,10 @@ func _get_obstructed_aim_end(start_position: Vector3, end_position: Vector3) -> 
 func _set_aim_line_visible(is_visible: bool) -> void:
 	if _aim_line_instance != null:
 		_aim_line_instance.visible = is_visible
+
+func _set_spread_preview_visible(is_visible: bool) -> void:
+	if _spread_preview_instance != null:
+		_spread_preview_instance.visible = is_visible
 
 func _is_pointer_over_ui() -> bool:
 	var hovered_control := get_viewport().gui_get_hovered_control()

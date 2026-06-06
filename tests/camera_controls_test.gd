@@ -33,6 +33,17 @@ func _ready() -> void:
 	next_focus = camera.get_focus_for_follow_target(Vector3.ZERO, Vector3(2.0, 1.0, 0.0))
 	_expect_vector3(next_focus, Vector3(0.0, 1.0, 0.0), "follow target inside margin should not pull xz focus")
 
+	camera.set_yaw_radians(0.0)
+	camera.set_manual_camera_control_cooldown(0.0)
+	camera.auto_rotation_smooth_speed = 100.0
+	camera.rotate_towards_follow_movement(Vector3(1.0, 0.0, 0.0), 1.0)
+	_expect_float(camera.get_yaw_radians(), -PI * 0.5, "camera should rotate behind positive x movement")
+
+	camera.set_yaw_radians(0.0)
+	camera.set_manual_camera_control_cooldown(0.5)
+	camera.rotate_towards_follow_movement(Vector3(1.0, 0.0, 0.0), 1.0)
+	_expect_float(camera.get_yaw_radians(), 0.0, "manual camera control cooldown should suppress auto rotation")
+
 	camera.queue_free()
 	await get_tree().create_timer(0.1).timeout
 	if _failed:

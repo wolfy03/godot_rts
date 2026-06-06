@@ -92,7 +92,10 @@ func _process_collision_between(from: Vector3, to: Vector3) -> bool:
 		return false
 
 	var unit := collision.get("collider") as Unit
-	_spawn_player_impact_debug_marker(collision.get("position", to))
+	_spawn_player_impact_debug_marker(
+		collision.get("position", to),
+		collision.get("normal", Vector3.UP)
+	)
 	if unit != null:
 		_apply_impact_to(unit)
 
@@ -136,7 +139,7 @@ func _apply_impact_to(unit: Unit) -> void:
 
 	unit.receive_projectile_impact(_attack_data)
 
-func _spawn_player_impact_debug_marker(position: Vector3) -> void:
+func _spawn_player_impact_debug_marker(position: Vector3, normal: Vector3 = Vector3.UP) -> void:
 	if _attack_data == null:
 		return
 	var source := _attack_data.get_valid_source()
@@ -145,13 +148,15 @@ func _spawn_player_impact_debug_marker(position: Vector3) -> void:
 
 	var marker := MeshInstance3D.new()
 	marker.name = "PlayerImpactDebugMarker"
-	marker.global_position = position
+	var marker_normal := normal.normalized() if normal.length_squared() > 0.001 else Vector3.UP
+	marker.global_position = position + marker_normal * 0.08
 	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.09
-	mesh.height = 0.18
+	mesh.radius = 0.14
+	mesh.height = 0.28
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
 	material.albedo_color = Color(1.0, 0.0, 0.0, 1.0)
 	material.emission_enabled = true
 	material.emission = Color(1.0, 0.0, 0.0, 1.0)

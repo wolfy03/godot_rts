@@ -14,6 +14,7 @@ const MEDIC_SKILL := preload("res://assets/skills/stimulant_injection.tres")
 const MACHINE_GUNNER_SKILL := preload("res://assets/skills/incendiary_round.tres")
 const SNIPER_SKILL := preload("res://assets/skills/weak_point_shot.tres")
 const GameTeamData := preload("res://scripts/team/game_team.gd")
+const UnitEffectManagerScript := preload("res://scripts/effects/unit_effect_manager.gd")
 const PLAYER_UNIT_MASK := 0b10
 const ENEMY_UNIT_MASK := 0b100
 const AIM_POINT_WEIGHTS := {
@@ -101,6 +102,7 @@ var equipment_attack_speed_multiplier: float = 1.0
 var equipment_accuracy_bonus: float = 0.0
 var equipment_evasion_bonus: float = 0.0
 var current_recoil_degrees: float = 0.0
+var _ai_recoil_recovering: bool = false
 
 var veterancy: int = 0
 var experience: int = 0
@@ -110,10 +112,8 @@ var _current_health: int
 var _is_dead: bool = false
 var _base_navigation_max_speed: float = 0.0
 var _portrait_texture: Texture2D = null
-var _active_effects: Array[ActiveUnitEffect] = []
-var _next_effect_instance_id: int = 1
+var _effect_manager := UnitEffectManagerScript.new()
 var _cover_effect_instance_id: int = 0
-var _active_effects_need_processing: bool = false
 var _effect_indicator_sprites: Dictionary = {}
 var _skills: Array[UnitSkill] = []
 var _skill_cooldowns: Dictionary = {}
@@ -748,6 +748,30 @@ func get_weapon_spread_direction(base_direction: Vector3, extra_spread_degrees: 
 
 	return _get_random_direction_in_cone(base_direction.normalized(), deg_to_rad(spread_degrees))
 
+func get_current_weapon_spread_angle_degrees() -> float:
+	if equipped_weapon == null:
+		return 0.0
+
+	var pellet_spread := equipped_weapon.pellet_spread_angle_degrees if equipped_weapon.pellet_count > 1 else 0.0
+	return maxf(0.0, equipped_weapon.spread_angle_degrees + current_recoil_degrees + pellet_spread)
+
+func should_ai_hold_fire_for_recoil() -> bool:
+	if is_player_agent() or equipped_weapon == null:
+		return false
+
+	var base_spread := maxf(equipped_weapon.spread_angle_degrees, 0.001)
+	var current_spread := get_current_weapon_spread_angle_degrees()
+	if _ai_recoil_recovering:
+		if current_spread <= base_spread * 1.2:
+			_ai_recoil_recovering = false
+		return _ai_recoil_recovering
+
+	if current_spread >= base_spread * 2.0:
+		_ai_recoil_recovering = true
+		return true
+
+	return false
+
 func _get_random_direction_in_cone(base_direction: Vector3, cone_angle: float) -> Vector3:
 	var forward := base_direction.normalized()
 	var reference := Vector3.UP
@@ -774,87 +798,36 @@ func apply_effect(effect: UnitEffect) -> int:
 	if effect == null or _is_dead:
 		return 0
 
-	var runtime_effect := effect.duplicate(true) as UnitEffect
-	if runtime_effect == null:
-		push_warning("apply_effect expected a UnitEffect resource.")
-		return 0
-
-	if runtime_effect.instant_health_delta != 0:
-		_apply_health_delta(runtime_effect.instant_health_delta)
-
-	if not runtime_effect.has_stat_modifiers():
-		return 0
-
-	var instance := ActiveUnitEffect.new(_next_effect_instance_id, runtime_effect)
-	_next_effect_instance_id += 1
-	_active_effects.append(instance)
-	_refresh_active_effect_processing_state()
-	_sync_effect_derived_stats()
-	_update_effect_indicators()
-	effects_changed.emit()
-	return instance.instance_id
+	var instance_id := _effect_manager.apply(effect, _apply_health_delta)
+	if instance_id != 0:
+		_on_effects_changed()
+	return instance_id
 
 func remove_effect_instance(instance_id: int) -> void:
-	for index in range(_active_effects.size() - 1, -1, -1):
-		if _active_effects[index].instance_id == instance_id:
-			_active_effects.remove_at(index)
-			_refresh_active_effect_processing_state()
-			_sync_effect_derived_stats()
-			_update_effect_indicators()
-			effects_changed.emit()
-			return
+	if _effect_manager.remove_instance(instance_id):
+		_on_effects_changed()
 
 func remove_effect_id(effect_id: StringName) -> void:
-	var removed := false
-	for index in range(_active_effects.size() - 1, -1, -1):
-		if _active_effects[index].effect.id == effect_id:
-			_active_effects.remove_at(index)
-			removed = true
-
-	if removed:
-		_refresh_active_effect_processing_state()
-		_sync_effect_derived_stats()
-		_update_effect_indicators()
-		effects_changed.emit()
+	if _effect_manager.remove_id(effect_id):
+		_on_effects_changed()
 
 func has_effect(effect_id: StringName) -> bool:
-	for active_effect in _active_effects:
-		if active_effect.effect.id == effect_id:
-			return true
+	return _effect_manager.has(effect_id)
 
-	return false
-
-func get_active_effects() -> Array[ActiveUnitEffect]:
-	return _active_effects.duplicate()
+func get_active_effects() -> Array:
+	return _effect_manager.get_active_effects()
 
 func _get_effect_projectile_evasion_chance() -> float:
-	var effect_evasion_chance := 0.0
-	for active_effect in _active_effects:
-		effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
-
-	return effect_evasion_chance
+	return _effect_manager.get_projectile_evasion_chance()
 
 func get_projectile_evasion_chance() -> float:
 	return clampf(_get_effect_projectile_evasion_chance(), 0.0, 1.0)
 
 func _get_cover_projectile_evasion_chance() -> float:
-	var effect_evasion_chance := 0.0
-	for active_effect in _active_effects:
-		if _is_cover_effect(active_effect.effect):
-			effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
-
-	return effect_evasion_chance
+	return _effect_manager.get_cover_projectile_evasion_chance(COVER_EFFECT_IDS)
 
 func _get_non_cover_projectile_evasion_chance() -> float:
-	var effect_evasion_chance := 0.0
-	for active_effect in _active_effects:
-		if not _is_cover_effect(active_effect.effect):
-			effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
-
-	return effect_evasion_chance
-
-func _is_cover_effect(effect: UnitEffect) -> bool:
-	return effect != null and COVER_EFFECT_IDS.has(effect.id)
+	return _effect_manager.get_non_cover_projectile_evasion_chance(COVER_EFFECT_IDS)
 
 func heal(amount: int) -> int:
 	if amount <= 0 or _is_dead:
@@ -1028,74 +1001,26 @@ func _sync_effect_derived_stats() -> void:
 	_emit_health_changed()
 	_sync_combat_ranges()
 
+func _on_effects_changed() -> void:
+	_sync_effect_derived_stats()
+	_update_effect_indicators()
+	effects_changed.emit()
+
 func _process_active_effects(delta: float) -> void:
-	if not _active_effects_need_processing:
-		return
-
-	var removed := false
-	for index in range(_active_effects.size() - 1, -1, -1):
-		var active_effect := _active_effects[index]
-		_process_effect_health_delta(active_effect, delta)
-
-		if active_effect.remaining_duration > 0.0:
-			active_effect.remaining_duration -= delta
-			if active_effect.remaining_duration <= 0.0:
-				_active_effects.remove_at(index)
-				removed = true
-
-	if removed:
-		_refresh_active_effect_processing_state()
-		_sync_effect_derived_stats()
-		_update_effect_indicators()
-		effects_changed.emit()
-
-func _refresh_active_effect_processing_state() -> void:
-	_active_effects_need_processing = false
-	for active_effect in _active_effects:
-		if active_effect.remaining_duration > 0.0 or not is_zero_approx(active_effect.effect.health_delta_per_second):
-			_active_effects_need_processing = true
-			return
-
-func _process_effect_health_delta(active_effect: ActiveUnitEffect, delta: float) -> void:
-	if is_zero_approx(active_effect.effect.health_delta_per_second):
-		return
-
-	active_effect.health_delta_remainder += active_effect.effect.health_delta_per_second * delta
-	var whole_delta := 0
-	if active_effect.health_delta_remainder >= 1.0:
-		whole_delta = int(floor(active_effect.health_delta_remainder))
-	elif active_effect.health_delta_remainder <= -1.0:
-		whole_delta = int(ceil(active_effect.health_delta_remainder))
-
-	if whole_delta == 0:
-		return
-
-	active_effect.health_delta_remainder -= float(whole_delta)
-	_apply_health_delta(whole_delta)
+	if _effect_manager.process(delta, _apply_health_delta):
+		_on_effects_changed()
 
 func _get_effect_max_health_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.max_health_bonus
-	return bonus
+	return _effect_manager.get_max_health_bonus()
 
 func _get_effect_attack_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.attack_damage_bonus
-	return bonus
+	return _effect_manager.get_attack_damage_bonus()
 
 func _get_effect_melee_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.melee_damage_bonus
-	return bonus
+	return _effect_manager.get_melee_damage_bonus()
 
 func _get_effect_ranged_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.ranged_damage_bonus
-	return bonus
+	return _effect_manager.get_ranged_damage_bonus()
 
 func _get_toggled_ranged_damage_bonus() -> int:
 	var bonus := 0
@@ -1119,40 +1044,22 @@ func _get_toggled_skills() -> Array[UnitSkill]:
 	return toggled_skills
 
 func _get_effect_melee_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.melee_range_bonus
-	return bonus
+	return _effect_manager.get_melee_range_bonus()
 
 func _get_effect_ranged_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.ranged_range_bonus
-	return bonus
+	return _effect_manager.get_ranged_range_bonus()
 
 func _get_effect_attack_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.attack_range_bonus
-	return bonus
+	return _effect_manager.get_attack_range_bonus()
 
 func _get_effect_attack_speed_multiplier() -> float:
-	var multiplier := 1.0
-	for active_effect in _active_effects:
-		multiplier *= active_effect.effect.attack_speed_multiplier
-	return maxf(multiplier, 0.01)
+	return _effect_manager.get_attack_speed_multiplier()
 
 func _get_effect_move_speed_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.move_speed_bonus
-	return bonus
+	return _effect_manager.get_move_speed_bonus()
 
 func _get_effect_vision_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.vision_range_bonus
-	return bonus
+	return _effect_manager.get_vision_range_bonus()
 
 func _set_area_radius(area: Area3D, radius: float) -> void:
 	if area == null:
@@ -1255,8 +1162,8 @@ func _update_effect_indicators() -> void:
 		return
 
 	var active_effects_by_key := {}
-	for active_effect in _active_effects:
-		var effect := active_effect.effect
+	for active_effect in get_active_effects():
+		var effect: UnitEffect = active_effect.effect
 		if effect == null or effect.icon == null:
 			continue
 
@@ -1551,6 +1458,8 @@ func _apply_weapon_recoil() -> void:
 		equipped_weapon.max_recoil_degrees,
 		current_recoil_degrees + maxf(0.0, equipped_weapon.recoil_per_shot_degrees)
 	)
+	if current_recoil_degrees <= 0.001:
+		_ai_recoil_recovering = false
 
 func _emit_health_changed() -> void:
 	health_changed.emit(_current_health, get_max_health())
@@ -1576,14 +1485,3 @@ class RangedAimSolution:
 	func _init(solution_hit_quality: float, solution_impact_position: Vector3) -> void:
 		hit_quality = solution_hit_quality
 		impact_position = solution_impact_position
-
-class ActiveUnitEffect:
-	var instance_id: int
-	var effect: UnitEffect
-	var remaining_duration: float
-	var health_delta_remainder: float = 0.0
-
-	func _init(effect_instance_id: int, unit_effect: UnitEffect) -> void:
-		instance_id = effect_instance_id
-		effect = unit_effect
-		remaining_duration = unit_effect.duration
