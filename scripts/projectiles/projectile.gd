@@ -8,13 +8,13 @@ class_name Projectile
 @export_flags_3d_physics var unit_collision_mask: int = 6
 @export var player_impact_debug_duration: float = 1.25
 
-var _target: Unit
-var _attack_data: AttackData
+var _target = null
+var _attack_data = null
 var _miss_direction: Vector3 = Vector3.ZERO
 var _direct_direction: Vector3 = Vector3.ZERO
 var _lifetime: float = 0.0
 
-func setup(target: Unit, attack_data: AttackData, miss_position: Vector3 = Vector3.INF) -> void:
+func setup(target, attack_data, miss_position: Vector3 = Vector3.INF) -> void:
 	_target = target
 	_attack_data = attack_data
 	if _attack_data != null and _attack_data.has_incendiary_trail:
@@ -22,7 +22,7 @@ func setup(target: Unit, attack_data: AttackData, miss_position: Vector3 = Vecto
 	if _is_aimed_miss() and miss_position != Vector3.INF:
 		_miss_direction = (miss_position - global_position).normalized()
 
-func setup_direction(attack_data: AttackData, direction: Vector3) -> void:
+func setup_direction(attack_data, direction: Vector3) -> void:
 	_target = null
 	_attack_data = attack_data
 	_direct_direction = direction.normalized()
@@ -91,7 +91,7 @@ func _process_collision_between(from: Vector3, to: Vector3) -> bool:
 	if collision.is_empty():
 		return false
 
-	var unit := collision.get("collider") as Unit
+	var unit: Object = collision.get("collider")
 	_spawn_player_impact_debug_marker(
 		collision.get("position", to),
 		collision.get("normal", Vector3.UP)
@@ -121,35 +121,46 @@ func _get_collision_exclusions() -> Array[RID]:
 	if _attack_data == null:
 		return exclusions
 
-	var source := _attack_data.get_valid_source()
-	if source != null:
+	var source = _attack_data.get_valid_source()
+	if source is CollisionObject3D:
 		exclusions.append(source.get_rid())
 
 	return exclusions
 
 func _get_current_target_position() -> Vector3:
-	if not is_instance_valid(_target) or _target._is_dead:
+	if not _is_valid_unit_target(_target):
+		return Vector3.INF
+	if not (_target is Node3D):
 		return Vector3.INF
 
 	return _target.global_position + Vector3.UP * 0.6
 
-func _apply_impact_to(unit: Unit) -> void:
-	if not is_instance_valid(unit) or unit._is_dead:
+func _apply_impact_to(unit) -> void:
+	if not _is_valid_unit_target(unit):
+		return
+	if not unit.has_method("receive_projectile_impact"):
 		return
 
 	unit.receive_projectile_impact(_attack_data)
 
-func _spawn_player_impact_debug_marker(position: Vector3, normal: Vector3 = Vector3.UP) -> void:
+func _is_valid_unit_target(unit) -> bool:
+	if unit == null or not is_instance_valid(unit):
+		return false
+	var is_dead = unit.get("_is_dead")
+	if is_dead is bool:
+		return not is_dead
+	return unit.has_method("receive_projectile_impact")
+
+func _spawn_player_impact_debug_marker(impact_position: Vector3, normal: Vector3 = Vector3.UP) -> void:
 	if _attack_data == null:
 		return
-	var source := _attack_data.get_valid_source()
-	if not (source is PlayerAgent):
+	var source = _attack_data.get_valid_source()
+	if not _is_player_agent_source(source):
 		return
 
 	var marker := MeshInstance3D.new()
 	marker.name = "PlayerImpactDebugMarker"
 	var marker_normal := normal.normalized() if normal.length_squared() > 0.001 else Vector3.UP
-	marker.global_position = position + marker_normal * 0.08
 	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mesh := SphereMesh.new()
 	mesh.radius = 0.14
@@ -168,6 +179,7 @@ func _spawn_player_impact_debug_marker(position: Vector3, normal: Vector3 = Vect
 	if scene_root == null:
 		return
 	scene_root.add_child(marker)
+	marker.global_position = impact_position + marker_normal * 0.08
 
 	var timer := Timer.new()
 	timer.one_shot = true
@@ -175,6 +187,13 @@ func _spawn_player_impact_debug_marker(position: Vector3, normal: Vector3 = Vect
 	timer.timeout.connect(marker.queue_free)
 	marker.add_child(timer)
 	timer.start()
+
+func _is_player_agent_source(source) -> bool:
+	if source == null or not is_instance_valid(source):
+		return false
+	if source.has_method("is_player_agent"):
+		return source.is_player_agent()
+	return source.is_in_group("player_agent") if source is Node else false
 
 func _add_incendiary_trail() -> void:
 	var particles := GPUParticles3D.new()

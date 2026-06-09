@@ -27,6 +27,10 @@ func _ready() -> void:
 	camera.rotate_orbit(Vector2(0.0, 10000.0))
 	_expect_float(camera.get_pitch_degrees(), 25.0, "orbit drag should clamp downward pitch")
 
+	camera.max_pitch_degrees = 90.0
+	camera.set_pitch_degrees(90.0)
+	_expect_float(camera.get_pitch_degrees(), 89.0, "pitch should stay below vertical look_at colinearity")
+
 	camera.follow_margin = 3.0
 	var next_focus: Vector3 = camera.get_focus_for_follow_target(Vector3.ZERO, Vector3(10.0, 1.0, 0.0))
 	_expect_vector3(next_focus, Vector3(7.0, 1.0, 0.0), "follow target should keep configured margin")

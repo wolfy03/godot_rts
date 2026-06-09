@@ -55,7 +55,7 @@ func is_passive() -> bool:
 func is_toggle() -> bool:
 	return skill_type == SkillType.ACTIVE and activation_mode == ActivationMode.TOGGLE
 
-func can_activate(caster: Unit, target_unit: Unit = null, target_position: Vector3 = Vector3.INF) -> bool:
+func can_activate(caster, target_unit = null, target_position: Vector3 = Vector3.INF) -> bool:
 	if caster == null or not is_instance_valid(caster) or caster._is_dead:
 		return false
 	if is_toggle():
@@ -75,7 +75,7 @@ func can_activate(caster: Unit, target_unit: Unit = null, target_position: Vecto
 		_:
 			return false
 
-func activate(caster: Unit, target_unit: Unit = null, target_position: Vector3 = Vector3.INF) -> bool:
+func activate(caster, target_unit = null, target_position: Vector3 = Vector3.INF) -> bool:
 	if not can_activate(caster, target_unit, target_position):
 		return false
 
@@ -91,7 +91,7 @@ func activate(caster: Unit, target_unit: Unit = null, target_position: Vector3 =
 
 	return affected
 
-func apply_at_position(caster: Unit, target_unit: Unit = null, target_position: Vector3 = Vector3.INF) -> bool:
+func apply_at_position(caster, target_unit = null, target_position: Vector3 = Vector3.INF) -> bool:
 	var affected := false
 	if target_type == TargetType.SELF:
 		affected = _apply_to_unit(caster, caster)
@@ -107,7 +107,7 @@ func apply_at_position(caster: Unit, target_unit: Unit = null, target_position: 
 
 	return affected
 
-func _spawn_arc_projectile(caster: Unit, target_position: Vector3) -> bool:
+func _spawn_arc_projectile(caster, target_position: Vector3) -> bool:
 	if projectile_scene == null or target_position == Vector3.INF:
 		return false
 
@@ -124,14 +124,14 @@ func _spawn_arc_projectile(caster: Unit, target_position: Vector3) -> bool:
 		projectile.setup(caster, self, target_position)
 	return true
 
-func _apply_to_units_in_radius(caster: Unit, center: Vector3) -> bool:
+func _apply_to_units_in_radius(caster, center: Vector3) -> bool:
 	if center == Vector3.INF:
 		return false
 
 	var affected := false
 	var radius_sq := radius * radius
 	for node in caster.get_tree().get_nodes_in_group("units"):
-		var unit := node as Unit
+		var unit = node
 		if unit == null or not is_instance_valid(unit) or unit._is_dead:
 			continue
 		if _get_horizontal_distance_squared(unit.global_position, center) > radius_sq:
@@ -143,7 +143,7 @@ func _apply_to_units_in_radius(caster: Unit, center: Vector3) -> bool:
 
 	return affected
 
-func _apply_to_unit(caster: Unit, unit: Unit) -> bool:
+func _apply_to_unit(caster, unit) -> bool:
 	if not _can_affect_unit(caster, unit):
 		return false
 
@@ -158,7 +158,7 @@ func _apply_to_unit(caster: Unit, unit: Unit) -> bool:
 
 	return affected
 
-func _can_affect_unit(caster: Unit, unit: Unit) -> bool:
+func _can_affect_unit(caster, unit) -> bool:
 	if not is_instance_valid(unit) or unit._is_dead:
 		return false
 	if unit == caster:
@@ -169,7 +169,7 @@ func _can_affect_unit(caster: Unit, unit: Unit) -> bool:
 		return affects_allies
 	return false
 
-func _is_valid_target_unit(caster: Unit, target_unit: Unit, allow_ally: bool, allow_enemy: bool) -> bool:
+func _is_valid_target_unit(caster, target_unit, allow_ally: bool, allow_enemy: bool) -> bool:
 	if target_unit == null or not is_instance_valid(target_unit) or target_unit._is_dead:
 		return false
 	if not _is_position_in_range(caster, target_unit.global_position):
@@ -180,7 +180,7 @@ func _is_valid_target_unit(caster: Unit, target_unit: Unit, allow_ally: bool, al
 		return true
 	return false
 
-func _is_position_in_range(caster: Unit, target_position: Vector3) -> bool:
+func _is_position_in_range(caster, target_position: Vector3) -> bool:
 	if cast_range <= 0.0:
 		return true
 	return _get_horizontal_distance(caster.global_position, target_position) <= cast_range + 0.05

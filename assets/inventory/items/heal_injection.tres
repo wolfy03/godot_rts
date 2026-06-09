@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="InventoryItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/inventory/inventory_item_definition.gd" id="1_item_definition"]
+
+[resource]
+script = ExtResource("1_item_definition")
+id = &"heal_injection"
+display_name = "회복주사"
+description = "체력을 회복하는 소모품입니다."
+grid_size = Vector2i(1, 1)
+max_stack_size = 1
+can_rotate = false

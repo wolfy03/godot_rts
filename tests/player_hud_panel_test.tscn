@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/player_hud_panel_test.gd" id="1_player_hud_panel_test"]
+
+[node name="PlayerHUDPanelTest" type="Node"]
+script = ExtResource("1_player_hud_panel_test")

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="InventoryItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/inventory/inventory_item_definition.gd" id="1_item_definition"]
+
+[resource]
+script = ExtResource("1_item_definition")
+id = &"magazine"
+display_name = "탄창"
+description = "탄약을 담는 장비 부속품입니다."
+grid_size = Vector2i(2, 1)
+max_stack_size = 1
+can_rotate = true

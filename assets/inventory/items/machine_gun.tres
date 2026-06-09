@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="InventoryItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/inventory/inventory_item_definition.gd" id="1_item_definition"]
+[ext_resource type="Resource" path="res://assets/equipment/machine_gun.tres" id="2_equipment"]
+
+[resource]
+script = ExtResource("1_item_definition")
+id = &"machine_gun"
+display_name = "기관총"
+description = "기존 기관총 장비 리소스와 연결된 무기입니다."
+grid_size = Vector2i(4, 2)
+max_stack_size = 1
+can_rotate = true
+equipment = ExtResource("2_equipment")

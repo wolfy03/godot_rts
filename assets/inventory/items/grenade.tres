@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="InventoryItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/inventory/inventory_item_definition.gd" id="1_item_definition"]
+[ext_resource type="Resource" path="res://assets/skills/grenade_throw.tres" id="2_grenade_skill"]
+
+[resource]
+script = ExtResource("1_item_definition")
+id = &"grenade"
+display_name = "수류탄"
+description = "수류탄 투척 스킬에 사용되는 소모품입니다."
+grid_size = Vector2i(1, 1)
+max_stack_size = 1
+can_rotate = false
+linked_skill = ExtResource("2_grenade_skill")

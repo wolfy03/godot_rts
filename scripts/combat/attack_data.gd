@@ -17,7 +17,7 @@ var source_position: Vector3 = Vector3.INF
 var _source_ref: WeakRef
 
 func _init(
-	attack_source: Unit = null,
+	attack_source = null,
 	attack_damage: int = 0,
 	attack_accuracy: float = 1.0,
 	attack_kind: AttackKind = AttackKind.RANGED,
@@ -40,11 +40,11 @@ func _init(
 	has_incendiary_trail = attack_has_incendiary_trail
 	source_position = attack_source_position
 
-func get_valid_source() -> Unit:
+func get_valid_source():
 	if _source_ref == null:
 		return null
 
-	var source := _source_ref.get_ref() as Unit
+	var source = _source_ref.get_ref()
 	if source != null and is_instance_valid(source):
 		return source
 

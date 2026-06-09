@@ -10,11 +10,11 @@ class_name GrenadeProjectile
 
 var _caster_ref: WeakRef
 var _caster_team_mask: int = 0
-var _skill: UnitSkill
+var _skill: Resource
 var _fuse_elapsed: float = 0.0
 var _detonated: bool = false
 
-func setup(caster: Unit, skill: UnitSkill, target_position: Vector3) -> void:
+func setup(caster, skill: Resource, target_position: Vector3) -> void:
 	if caster == null or skill == null or target_position == Vector3.INF:
 		queue_free()
 		return
@@ -23,7 +23,7 @@ func setup(caster: Unit, skill: UnitSkill, target_position: Vector3) -> void:
 	_caster_team_mask = caster.get_team_mask()
 	_skill = skill
 
-	var start_position := caster.global_position + Vector3.UP * 0.9
+	var start_position: Vector3 = caster.global_position + Vector3.UP * 0.9
 	global_position = start_position
 	linear_velocity = _get_launch_velocity(start_position, target_position)
 	angular_velocity = Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized() * spin_strength
@@ -62,12 +62,12 @@ func _detonate() -> void:
 		return
 
 	_detonated = true
-	var source := _get_valid_caster()
+	var source: Object = _get_valid_caster()
 	var explosion_center := global_position
 	var radius := float(_skill.radius)
 	var radius_sq := radius * radius
 	for node in get_tree().get_nodes_in_group("units"):
-		var unit := node as Unit
+		var unit = node
 		if unit == null or not is_instance_valid(unit) or unit._is_dead:
 			continue
 		if unit.global_position.distance_squared_to(explosion_center) > radius_sq:
@@ -84,17 +84,17 @@ func _detonate() -> void:
 
 	queue_free()
 
-func _get_valid_caster() -> Unit:
+func _get_valid_caster():
 	if _caster_ref == null:
 		return null
 
-	var caster := _caster_ref.get_ref() as Unit
+	var caster: Object = _caster_ref.get_ref()
 	if caster != null and is_instance_valid(caster):
 		return caster
 	return null
 
-func _can_affect_unit(unit: Unit, source: Unit) -> bool:
-	var unit_team_mask := unit.get_team_mask()
+func _can_affect_unit(unit, source) -> bool:
+	var unit_team_mask: int = unit.get_team_mask()
 	if source != null and unit == source:
 		return bool(_skill.affects_allies)
 	if _caster_team_mask != 0 and unit_team_mask == _caster_team_mask:

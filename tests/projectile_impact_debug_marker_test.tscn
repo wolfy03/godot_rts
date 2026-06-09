@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c4p0f4veqbycw"]
+
+[ext_resource type="Script" path="res://tests/projectile_impact_debug_marker_test.gd" id="1_marker_test"]
+
+[node name="ProjectileImpactDebugMarkerTest" type="Node3D"]
+script = ExtResource("1_marker_test")

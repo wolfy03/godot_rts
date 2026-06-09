@@ -1,0 +1,60 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/inventory/inventory_world_item.gd" id="1_world_item"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_item"]
+size = Vector3(0.8, 0.3, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_item"]
+albedo_color = Color(0.16, 0.34, 0.42, 1)
+emission_enabled = true
+emission = Color(0.03, 0.18, 0.24, 1)
+emission_energy_multiplier = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_item"]
+material = SubResource("StandardMaterial3D_item")
+size = Vector3(0.8, 0.3, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_marker"]
+albedo_color = Color(0.88, 0.72, 0.22, 1)
+emission_enabled = true
+emission = Color(0.9, 0.62, 0.08, 1)
+emission_energy_multiplier = 1.2
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_marker"]
+material = SubResource("StandardMaterial3D_marker")
+top_radius = 0.05
+bottom_radius = 0.05
+height = 0.55
+
+[node name="InventoryWorldItem" type="Area3D"]
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("1_world_item")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+shape = SubResource("BoxShape3D_item")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+mesh = SubResource("BoxMesh_item")
+
+[node name="Marker" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.78, 0)
+mesh = SubResource("CylinderMesh_marker")
+
+[node name="Label3D" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.819152, 0.573576, 0, -0.573576, 0.819152, 0, 1.15, 0)
+pixel_size = 0.006
+billboard = 1
+text = "Item"
+horizontal_alignment = 1
+
+[node name="PickupPromptLabel" type="Label3D" parent="."]
+visible = false
+transform = Transform3D(1, 0, 0, 0, 0.819152, 0.573576, 0, -0.573576, 0.819152, 0.85, 0.7, 0)
+pixel_size = 0.006
+billboard = 1
+text = "[E] 줍기"
+horizontal_alignment = 1

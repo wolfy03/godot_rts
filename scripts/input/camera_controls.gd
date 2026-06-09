@@ -5,6 +5,7 @@ const ACTION_MOVE_LEFT := "Move Camera Left"
 const ACTION_MOVE_RIGHT := "Move Camera Right"
 const ACTION_MOVE_UP := "Move Camera Up"
 const ACTION_MOVE_DOWN := "Move Camera Down"
+const MAX_SAFE_PITCH_DEGREES := 89.0
 
 @export var camera_move_speed: float = 18
 @export var mouse_screen_edge_threshold_percentage: float = 0.01
@@ -73,11 +74,7 @@ func adjust_zoom(steps: float) -> void:
 func rotate_orbit(relative_motion: Vector2) -> void:
 	_mark_manual_camera_control()
 	_yaw -= relative_motion.x * rotation_sensitivity
-	_pitch = clampf(
-		_pitch - relative_motion.y * rotation_sensitivity,
-		deg_to_rad(min_pitch_degrees),
-		deg_to_rad(max_pitch_degrees)
-	)
+	_pitch = _get_clamped_pitch(_pitch - relative_motion.y * rotation_sensitivity)
 	_apply_camera_transform()
 
 func set_focus_position(focus_position: Vector3) -> void:
@@ -95,7 +92,7 @@ func get_zoom_distance() -> float:
 	return _zoom_distance
 
 func set_pitch_degrees(degrees: float) -> void:
-	_pitch = clampf(deg_to_rad(degrees), deg_to_rad(min_pitch_degrees), deg_to_rad(max_pitch_degrees))
+	_pitch = _get_clamped_pitch(deg_to_rad(degrees))
 	_apply_camera_transform()
 
 func get_pitch_degrees() -> float:
@@ -224,7 +221,7 @@ func _initialize_orbit_from_current_transform() -> void:
 	if distance > 0.001:
 		_zoom_distance = clampf(distance, min_zoom_distance, max_zoom_distance)
 		_yaw = atan2(offset.x, offset.z)
-		_pitch = clampf(asin(clampf(offset.y / distance, -1.0, 1.0)), deg_to_rad(min_pitch_degrees), deg_to_rad(max_pitch_degrees))
+		_pitch = _get_clamped_pitch(asin(clampf(offset.y / distance, -1.0, 1.0)))
 
 func _get_ground_focus_from_current_view() -> Vector3:
 	var viewport := get_viewport()
@@ -277,7 +274,8 @@ func _mark_manual_camera_control() -> void:
 	_manual_camera_control_cooldown = manual_camera_control_cooldown_seconds
 
 func _apply_camera_transform() -> void:
-	var pitch := clampf(_pitch, deg_to_rad(min_pitch_degrees), deg_to_rad(max_pitch_degrees))
+	var pitch := _get_clamped_pitch(_pitch)
+	_pitch = pitch
 	var horizontal_distance := cos(pitch) * _zoom_distance
 	var offset := Vector3(
 		sin(_yaw) * horizontal_distance,
@@ -286,3 +284,8 @@ func _apply_camera_transform() -> void:
 	)
 	global_position = _focus_position + offset
 	look_at(_focus_position, Vector3.UP)
+
+func _get_clamped_pitch(pitch: float) -> float:
+	var max_pitch := deg_to_rad(minf(max_pitch_degrees, MAX_SAFE_PITCH_DEGREES))
+	var min_pitch := minf(deg_to_rad(min_pitch_degrees), max_pitch)
+	return clampf(pitch, min_pitch, max_pitch)
