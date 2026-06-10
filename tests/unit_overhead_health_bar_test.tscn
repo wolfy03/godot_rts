@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dj617fbqfy2lt"]
+
+[ext_resource type="Script" path="res://tests/unit_overhead_health_bar_test.gd" id="1_health_bar_test"]
+
+[node name="UnitOverheadHealthBarTest" type="Node"]
+script = ExtResource("1_health_bar_test")

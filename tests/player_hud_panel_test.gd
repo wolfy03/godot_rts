@@ -47,6 +47,12 @@ class FakeAgent:
 		active_debuff.effect = debuff
 		return [active_buff, active_debuff]
 
+class FakeDebugOverlay:
+	var console_capturing_keyboard: bool = false
+
+	func is_console_capturing_keyboard() -> bool:
+		return console_capturing_keyboard
+
 var _failed := false
 
 func _ready() -> void:
@@ -55,6 +61,7 @@ func _ready() -> void:
 	_test_player_status_panel_uses_body_texture_for_health()
 	_test_player_status_panel_fits_hud_status_window()
 	_test_input_controller_accepts_tab_keycode_for_player_status()
+	_test_input_controller_skips_game_keys_while_console_captures_keyboard()
 
 	await get_tree().create_timer(0.1).timeout
 	if _failed:
@@ -142,6 +149,36 @@ func _test_input_controller_accepts_tab_keycode_for_player_status() -> void:
 	event.keycode = KEY_TAB
 	event.physical_keycode = 0
 	_expect(controller._is_player_status_toggle_event(event), "player status toggle should accept KEY_TAB keycode events")
+
+func _test_input_controller_skips_game_keys_while_console_captures_keyboard() -> void:
+	var controller := Node.new()
+	controller.set_script(InputControllerScript)
+	var overlay := FakeDebugOverlay.new()
+	overlay.console_capturing_keyboard = true
+
+	var tab_event := InputEventKey.new()
+	tab_event.pressed = true
+	tab_event.keycode = KEY_TAB
+	_expect(
+		controller._should_skip_game_input_for_console(tab_event, overlay),
+		"console keyboard capture should prevent Tab from toggling the status panel"
+	)
+
+	var interact_event := InputEventKey.new()
+	interact_event.pressed = true
+	interact_event.physical_keycode = KEY_E
+	_expect(
+		controller._should_skip_game_input_for_console(interact_event, overlay),
+		"console keyboard capture should prevent E from triggering interact"
+	)
+
+	var toggle_event := InputEventKey.new()
+	toggle_event.pressed = true
+	toggle_event.keycode = KEY_QUOTELEFT
+	_expect(
+		not controller._should_skip_game_input_for_console(toggle_event, overlay),
+		"console toggle key should remain available while console is open"
+	)
 
 func _expect(condition: bool, message: String) -> void:
 	if condition:

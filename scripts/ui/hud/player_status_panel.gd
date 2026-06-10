@@ -3,7 +3,7 @@ class_name PlayerStatusPanel
 
 const BODY_TEXTURE: Texture2D = preload("res://assets/sprites/Human_body_template.png")
 const BODY_TEXTURE_REGION := Rect2(1180.0, 30.0, 1240.0, 2110.0)
-const BODY_VIEW_SIZE := Vector2(104.0, 214.0)
+const BODY_VIEW_SIZE := Vector2(208.0, 428.0)
 
 class BodyHealthView:
 	extends Control

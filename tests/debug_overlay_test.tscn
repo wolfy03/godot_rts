@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://d0itba7citb27"]
+
+[ext_resource type="Script" path="res://tests/debug_overlay_test.gd" id="1_debug_overlay_test"]
+
+[node name="DebugOverlayTest" type="Node"]
+script = ExtResource("1_debug_overlay_test")

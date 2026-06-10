@@ -27,6 +27,7 @@ const AIM_POINT_WEIGHTS := {
 	&"RightLeg": 0.1,
 }
 const MUZZLE_HEIGHT := 0.7
+const OVERHEAD_HEALTH_BAR_TEXTURE_SIZE := Vector2i(64, 8)
 
 enum UnitClass {
 	RIFLEMAN,
@@ -89,6 +90,9 @@ signal skills_changed
 @export var status_indicator_up_offset: float = 1.08
 @export var status_indicator_slot_spacing: float = 0.14
 @export var status_indicator_icon_pixel_size: float = 0.0001
+@export var overhead_health_bar_up_offset: float = 1.18
+@export var overhead_health_bar_pixel_size: float = 0.001
+@export var overhead_health_bar_width_scale: float = 0.72
 @export var cover_slot_hold_radius: float = 0.65
 @export var auto_cover_search_radius: float = 5.0
 @export var base_vision_extra_range: float = 2.0
@@ -115,6 +119,9 @@ var _portrait_texture: Texture2D = null
 var _effect_manager := UnitEffectManagerScript.new()
 var _cover_effect_instance_id: int = 0
 var _effect_indicator_sprites: Dictionary = {}
+var _overhead_health_bar_space: Node3D
+var _overhead_health_bar_sprite: Sprite3D
+var _overhead_health_bar_percent: float = 1.0
 var _skills: Array[UnitSkill] = []
 var _skill_cooldowns: Dictionary = {}
 var _toggled_skill_ids: Dictionary = {}
@@ -144,6 +151,7 @@ func _ready():
 	_emit_veterancy_changed()
 	_emit_agent_level_changed()
 	_setup_status_indicator_space()
+	_setup_overhead_health_bar()
 
 func on_selection_changed(selected: bool):
 	unit_selected_sprite.visible = selected
@@ -1240,6 +1248,92 @@ func _update_status_indicator_space_position() -> void:
 	anchor_position += camera_basis.y * status_indicator_up_offset
 	status_indicator_space.global_transform = Transform3D(camera_basis, anchor_position)
 
+func has_overhead_health_bar() -> bool:
+	return _overhead_health_bar_space != null and is_instance_valid(_overhead_health_bar_space)
+
+func get_overhead_health_bar_percent() -> float:
+	return _overhead_health_bar_percent
+
+func get_overhead_health_bar_sprite_count() -> int:
+	if _overhead_health_bar_space == null:
+		return 0
+
+	var sprite_count := 0
+	for child in _overhead_health_bar_space.get_children():
+		if child is Sprite3D:
+			sprite_count += 1
+	return sprite_count
+
+func is_overhead_health_bar_top_level() -> bool:
+	return _overhead_health_bar_space != null and _overhead_health_bar_space.top_level
+
+func _setup_overhead_health_bar() -> void:
+	if is_player_agent():
+		return
+
+	_overhead_health_bar_space = Node3D.new()
+	_overhead_health_bar_space.name = "OverheadHealthBarSpace"
+	_overhead_health_bar_space.position = Vector3.UP * overhead_health_bar_up_offset
+	add_child(_overhead_health_bar_space)
+
+	_overhead_health_bar_sprite = _make_overhead_health_bar_sprite()
+	_overhead_health_bar_space.add_child(_overhead_health_bar_sprite)
+
+	_update_overhead_health_bar()
+
+func _make_overhead_health_bar_texture(percent: float) -> Texture2D:
+	var image := Image.create(
+		OVERHEAD_HEALTH_BAR_TEXTURE_SIZE.x,
+		OVERHEAD_HEALTH_BAR_TEXTURE_SIZE.y,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	image.fill(Color.TRANSPARENT)
+
+	var width := OVERHEAD_HEALTH_BAR_TEXTURE_SIZE.x
+	var height := OVERHEAD_HEALTH_BAR_TEXTURE_SIZE.y
+	var fill_width := clampi(roundi(float(width - 2) * clampf(percent, 0.0, 1.0)), 0, width - 2)
+	var fill_color := _get_overhead_health_bar_color(percent)
+	for y in height:
+		for x in width:
+			var is_border := x == 0 or y == 0 or x == width - 1 or y == height - 1
+			if is_border:
+				image.set_pixel(x, y, Color(0.02, 0.02, 0.02, 0.95))
+			elif x <= fill_width:
+				image.set_pixel(x, y, fill_color)
+			else:
+				image.set_pixel(x, y, Color(0.16, 0.02, 0.02, 0.82))
+	return ImageTexture.create_from_image(image)
+
+func _make_overhead_health_bar_sprite() -> Sprite3D:
+	var sprite := Sprite3D.new()
+	sprite.name = "HealthBar"
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.no_depth_test = true
+	sprite.fixed_size = true
+	sprite.pixel_size = overhead_health_bar_pixel_size
+	sprite.scale = Vector3(overhead_health_bar_width_scale, 1.0, 1.0)
+	return sprite
+
+func _update_overhead_health_bar() -> void:
+	if _overhead_health_bar_space == null:
+		return
+
+	var max_health_value := get_max_health()
+	_overhead_health_bar_percent = clampf(float(_current_health) / float(max_health_value), 0.0, 1.0) if max_health_value > 0 else 0.0
+	_overhead_health_bar_space.visible = not _is_dead
+	if _overhead_health_bar_sprite == null:
+		return
+
+	_overhead_health_bar_sprite.texture = _make_overhead_health_bar_texture(_overhead_health_bar_percent)
+
+func _get_overhead_health_bar_color(percent: float) -> Color:
+	if percent <= 0.25:
+		return Color(1.0, 0.12, 0.08, 0.95)
+	if percent <= 0.55:
+		return Color(1.0, 0.75, 0.16, 0.95)
+	return Color(0.16, 0.95, 0.28, 0.95)
+
 func clear_cover(restore_movement: bool = true) -> void:
 	var cover_to_release := reserved_cover
 	if cover_to_release == null:
@@ -1389,6 +1483,8 @@ func die() -> void:
 		return
 
 	_is_dead = true
+	if _overhead_health_bar_space != null:
+		_overhead_health_bar_space.visible = false
 
 	if state_machine:
 		state_machine.stop()
@@ -1463,6 +1559,7 @@ func _apply_weapon_recoil() -> void:
 
 func _emit_health_changed() -> void:
 	health_changed.emit(_current_health, get_max_health())
+	_update_overhead_health_bar()
 
 func _emit_veterancy_changed() -> void:
 	veterancy_changed.emit(veterancy, experience, get_next_veterancy_experience())

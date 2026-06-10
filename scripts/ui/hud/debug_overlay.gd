@@ -9,6 +9,8 @@ const COMMANDER_MODE_DISABLED := 0
 const COMMANDER_MODE_ANNIHILATE := 1
 const COMMANDER_MODE_GUARD_AREA := 2
 
+signal console_visibility_changed(is_open: bool)
+
 const EFFECTS := [
 	{
 		"label": "Buff Damage",
@@ -64,6 +66,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_console()
 		get_viewport().set_input_as_handled()
 
+func is_console_capturing_keyboard() -> bool:
+	return _console_panel != null and _console_panel.visible
+
 func unit_selection_changed(selected_units: Dictionary) -> void:
 	_selected_units = selected_units
 	_update_selected_label()
@@ -75,6 +80,7 @@ func _toggle_console() -> void:
 		_console_input.grab_focus()
 	else:
 		_console_input.release_focus()
+	console_visibility_changed.emit(_console_panel.visible)
 
 func _submit_console_command(command: String) -> void:
 	var normalized_command := command.strip_edges().to_upper()
@@ -84,6 +90,7 @@ func _submit_console_command(command: String) -> void:
 		_debug_panel.visible = true
 		_console_panel.visible = false
 		_console_input.release_focus()
+		console_visibility_changed.emit(false)
 		_status_label.text = "TEST_MODE enabled."
 	else:
 		_status_label.text = "Unknown command: %s" % command
@@ -95,7 +102,7 @@ func _apply_effect_to_selected(effect_path: String, label: String) -> void:
 		return
 
 	var applied_count := 0
-	for unit in _selected_units.values():
+	for unit in _get_effect_target_units():
 		if not is_instance_valid(unit):
 			continue
 
@@ -103,6 +110,26 @@ func _apply_effect_to_selected(effect_path: String, label: String) -> void:
 		applied_count += 1
 
 	_status_label.text = "%s applied to %d unit(s)." % [label, applied_count]
+
+func _get_effect_target_units() -> Array:
+	var targets: Array = []
+	for unit in _selected_units.values():
+		if unit != null and is_instance_valid(unit) and unit.has_method("apply_effect"):
+			targets.append(unit)
+
+	if not targets.is_empty():
+		return targets
+
+	var player: Object = _get_player_agent()
+	if player != null:
+		targets.append(player)
+	return targets
+
+func _get_player_agent():
+	for node in get_tree().get_nodes_in_group("player_agent"):
+		if node != null and is_instance_valid(node) and node.has_method("apply_effect"):
+			return node
+	return null
 
 func _build_console() -> void:
 	_console_panel = PanelContainer.new()

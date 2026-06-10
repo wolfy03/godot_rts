@@ -35,6 +35,10 @@ func _ready() -> void:
 	_build_ui()
 	_refresh()
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_DRAG_END:
+		_finish_drag_feedback()
+
 func set_inventory(inventory: Resource) -> void:
 	if _inventory == inventory:
 		_refresh()
@@ -255,6 +259,9 @@ func make_equipment_drag_data(source_slot_id: StringName) -> Dictionary:
 func get_active_drag_data() -> Dictionary:
 	return _active_drag_data.duplicate()
 
+func get_drop_preview_cell_count() -> int:
+	return _drop_preview_cell_keys.size()
+
 func rotate_active_drag() -> bool:
 	if _active_drag_data.is_empty():
 		return false
@@ -296,6 +303,7 @@ func can_drop_data_on_grid(data: Variant, target_grid_id: StringName, target_pos
 
 func drop_data_on_grid(data: Variant, target_grid_id: StringName, target_position: Vector2i) -> bool:
 	if not (data is Dictionary):
+		_finish_drag_feedback()
 		return false
 	var drag_data := _get_effective_drag_data(data as Dictionary)
 	var source_type := String(drag_data.get("source_type", "grid"))
@@ -303,11 +311,16 @@ func drop_data_on_grid(data: Variant, target_grid_id: StringName, target_positio
 	var rotated := bool(drag_data.get("rotated", placement.rotated if placement != null else false))
 	var grab_offset: Vector2i = drag_data.get("grab_offset", Vector2i.ZERO)
 	var adjusted_position := target_position - grab_offset
+	var dropped := false
 	if source_type == "equipment_slot":
 		var source_slot_id: StringName = drag_data.get("source_slot_id", &"")
 		var stack: Resource = drag_data.get("stack")
-		return drop_equipped_stack_on_grid(source_slot_id, target_grid_id, adjusted_position, stack, rotated)
-	return drop_stack_on_grid(target_grid_id, adjusted_position, placement, rotated)
+		dropped = drop_equipped_stack_on_grid(source_slot_id, target_grid_id, adjusted_position, stack, rotated)
+	else:
+		dropped = drop_stack_on_grid(target_grid_id, adjusted_position, placement, rotated)
+	if not dropped:
+		_finish_drag_feedback()
+	return dropped
 
 func get_drop_preview_cells_for_data(data: Variant, _target_grid_id: StringName, target_position: Vector2i) -> Array:
 	if not (data is Dictionary):
@@ -349,6 +362,10 @@ func _update_drop_preview_for_data(drag_data: Dictionary, target_grid_id: String
 func clear_drop_preview() -> void:
 	_last_drop_preview_grid_id = &""
 	_set_drop_preview_cells(&"", [], false)
+
+func _finish_drag_feedback() -> void:
+	_active_drag_data.clear()
+	clear_drop_preview()
 
 func _set_drop_preview_cells(grid_id: StringName, cells: Array, is_valid: bool) -> void:
 	for key in _drop_preview_cell_keys:

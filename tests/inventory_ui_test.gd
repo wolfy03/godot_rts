@@ -15,11 +15,14 @@ func _ready() -> void:
 	_test_inventory_panel_rotates_hovered_stack()
 	_test_inventory_panel_drag_data_exposes_footprint()
 	_test_inventory_panel_rotates_active_drag_data()
+	_test_inventory_panel_clears_drop_preview_after_failed_drop()
+	_test_inventory_panel_clears_drop_preview_when_drag_ends()
 	_test_inventory_panel_identifies_item_border_cells()
 	_test_inventory_panel_moves_equipped_stack_to_grid()
 	_test_inventory_panel_equips_matching_grid_stack()
 	_test_inventory_panel_rejects_wrong_equipment_slot()
 	_test_agent_direct_controller_blocks_input_while_inventory_is_open()
+	_test_agent_direct_controller_blocks_input_while_console_is_open()
 
 	await get_tree().create_timer(0.1).timeout
 	if _failed:
@@ -127,6 +130,42 @@ func _test_inventory_panel_rotates_active_drag_data() -> void:
 	_expect(placement.rotated, "dropping rotated drag data should rotate the placement")
 	panel.queue_free()
 
+func _test_inventory_panel_clears_drop_preview_after_failed_drop() -> void:
+	var panel := PanelContainer.new()
+	panel.set_script(InventoryPanelScript)
+	add_child(panel)
+
+	var inventory := InventoryContainerScript.new()
+	var backpack: Resource = inventory.add_grid(&"backpack", Vector2i(2, 2))
+	var stack := _make_stack(&"rifle", Vector2i(2, 1))
+	var placement: Resource = backpack.place(stack, Vector2i(0, 0))
+	panel.set_inventory(inventory)
+
+	var drag_data: Dictionary = panel.make_drag_data(&"backpack", Vector2i(0, 0), placement)
+	_expect(not panel.can_drop_data_on_grid(drag_data, &"backpack", Vector2i(1, 1)), "test setup should preview an invalid drop")
+	_expect(panel.get_drop_preview_cell_count() > 0, "invalid drop preview should still show before the drop is released")
+	_expect(not panel.drop_data_on_grid(drag_data, &"backpack", Vector2i(1, 1)), "invalid drop should fail")
+	_expect(panel.get_drop_preview_cell_count() == 0, "failed drop should clear the drop preview")
+	panel.queue_free()
+
+func _test_inventory_panel_clears_drop_preview_when_drag_ends() -> void:
+	var panel := PanelContainer.new()
+	panel.set_script(InventoryPanelScript)
+	add_child(panel)
+
+	var inventory := InventoryContainerScript.new()
+	var backpack: Resource = inventory.add_grid(&"backpack", Vector2i(2, 2))
+	var stack := _make_stack(&"rifle", Vector2i(2, 1))
+	var placement: Resource = backpack.place(stack, Vector2i(0, 0))
+	panel.set_inventory(inventory)
+
+	var drag_data: Dictionary = panel.make_drag_data(&"backpack", Vector2i(0, 0), placement)
+	_expect(panel.can_drop_data_on_grid(drag_data, &"backpack", Vector2i(0, 1)), "test setup should create a valid drop preview")
+	_expect(panel.get_drop_preview_cell_count() > 0, "drop preview should be visible before drag end")
+	panel.notification(Control.NOTIFICATION_DRAG_END)
+	_expect(panel.get_drop_preview_cell_count() == 0, "drag end should clear stale drop preview even when no cell receives the drop")
+	panel.queue_free()
+
 func _test_inventory_panel_identifies_item_border_cells() -> void:
 	var panel := PanelContainer.new()
 	panel.set_script(InventoryPanelScript)
@@ -206,6 +245,18 @@ func _test_agent_direct_controller_blocks_input_while_inventory_is_open() -> voi
 	_expect(controller.is_input_blocked_by_inventory(), "agent direct controller should expose inventory input block state")
 	controller.set_inventory_input_blocked(false)
 	_expect(not controller.is_input_blocked_by_inventory(), "agent direct controller should clear inventory input block state")
+	controller.queue_free()
+
+func _test_agent_direct_controller_blocks_input_while_console_is_open() -> void:
+	var controller := Node.new()
+	controller.set_script(AgentDirectControllerScript)
+	add_child(controller)
+
+	_expect(not controller.is_input_blocked_by_console(), "agent direct controller should start unblocked by console")
+	controller.set_console_input_blocked(true)
+	_expect(controller.is_input_blocked_by_console(), "agent direct controller should expose console input block state")
+	controller.set_console_input_blocked(false)
+	_expect(not controller.is_input_blocked_by_console(), "agent direct controller should clear console input block state")
 	controller.queue_free()
 
 func _expect(condition: bool, message: String) -> void:

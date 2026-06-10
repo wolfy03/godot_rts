@@ -29,9 +29,14 @@ func _ready():
 	_connect_if_needed(_command_panel.hold_position_command_requested, _unit_command_controller.issue_hold_position_command)
 	_connect_if_needed(_command_panel.skill_command_requested, _unit_command_controller.begin_skill_command)
 	_connect_if_needed(_inventory_panel.inventory_visibility_changed, _on_inventory_visibility_changed)
+	if _debug_overlay.has_signal("console_visibility_changed"):
+		_connect_if_needed(_debug_overlay.console_visibility_changed, _on_debug_console_visibility_changed)
 	_set_agent_command_mode_enabled(agent_command_mode_enabled)
 
 func _input(event: InputEvent) -> void:
+	if _should_skip_game_input_for_console(event, _debug_overlay):
+		return
+
 	if _is_player_status_toggle_event(event):
 		_toggle_player_status_panel()
 		get_viewport().set_input_as_handled()
@@ -57,7 +62,7 @@ func _set_agent_command_mode_enabled(enabled: bool) -> void:
 	_command_panel.set_command_mode_enabled(enabled)
 	_agent_direct_controller.set_command_mode_enabled(enabled)
 	if _camera_controls.has_method("set_keyboard_camera_controls_enabled"):
-		_camera_controls.set_keyboard_camera_controls_enabled(enabled)
+		_camera_controls.set_keyboard_camera_controls_enabled(enabled and not _is_debug_console_capturing_keyboard())
 	if _camera_controls.has_method("set_mouse_edge_camera_controls_enabled"):
 		_camera_controls.set_mouse_edge_camera_controls_enabled(enabled)
 
@@ -80,6 +85,15 @@ func _on_inventory_visibility_changed(is_open: bool) -> void:
 		var agent := _get_player_agent()
 		if agent != null and agent.has_method("sync_equipped_weapon_from_inventory"):
 			agent.sync_equipped_weapon_from_inventory()
+
+func _on_debug_console_visibility_changed(is_open: bool) -> void:
+	_unit_selection.set_command_mode_enabled(agent_command_mode_enabled and not is_open)
+	_unit_command_controller.set_command_mode_enabled(agent_command_mode_enabled and not is_open)
+	_command_panel.set_command_mode_enabled(agent_command_mode_enabled and not is_open)
+	if _agent_direct_controller.has_method("set_console_input_blocked"):
+		_agent_direct_controller.set_console_input_blocked(is_open)
+	if _camera_controls.has_method("set_keyboard_camera_controls_enabled"):
+		_camera_controls.set_keyboard_camera_controls_enabled(agent_command_mode_enabled and not is_open)
 
 func _get_player_agent() -> PlayerAgent:
 	for node in get_tree().get_nodes_in_group("player_agent"):
@@ -104,6 +118,26 @@ func _is_player_status_toggle_event(event: InputEvent) -> bool:
 		and key_event.pressed \
 		and not key_event.echo \
 		and (key_event.physical_keycode == KEY_TAB or key_event.keycode == KEY_TAB)
+
+func _should_skip_game_input_for_console(event: InputEvent, debug_overlay = null) -> bool:
+	var key_event := event as InputEventKey
+	if key_event == null:
+		return false
+	if _is_console_toggle_event(key_event):
+		return false
+	if debug_overlay == null or not debug_overlay.has_method("is_console_capturing_keyboard"):
+		return false
+	return debug_overlay.is_console_capturing_keyboard()
+
+func _is_debug_console_capturing_keyboard() -> bool:
+	if _debug_overlay == null or not _debug_overlay.has_method("is_console_capturing_keyboard"):
+		return false
+	return _debug_overlay.is_console_capturing_keyboard()
+
+func _is_console_toggle_event(key_event: InputEventKey) -> bool:
+	return key_event.pressed \
+		and not key_event.echo \
+		and (key_event.keycode == KEY_QUOTELEFT or key_event.physical_keycode == KEY_QUOTELEFT)
 
 func _is_interact_event(event: InputEvent) -> bool:
 	if event.is_action_pressed(ACTION_INTERACT):

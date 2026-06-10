@@ -28,6 +28,7 @@ var _spread_preview_instance: MeshInstance3D
 var _spread_preview_mesh: ImmediateMesh
 var _spread_preview_material: StandardMaterial3D
 var _inventory_input_blocked: bool = false
+var _console_input_blocked: bool = false
 
 func _ready() -> void:
 	_setup_aim_line()
@@ -67,6 +68,21 @@ func set_inventory_input_blocked(blocked: bool) -> void:
 func is_input_blocked_by_inventory() -> bool:
 	return _inventory_input_blocked
 
+func set_console_input_blocked(blocked: bool) -> void:
+	if _console_input_blocked == blocked:
+		return
+
+	_console_input_blocked = blocked
+	if _console_input_blocked:
+		_aim_camera_offset = Vector3.ZERO
+		_set_aim_line_visible(false)
+		_set_spread_preview_visible(false)
+		if _active_agent != null and is_instance_valid(_active_agent):
+			_active_agent.set_agent_control_input(Vector3.ZERO, Vector3.INF, false)
+
+func is_input_blocked_by_console() -> bool:
+	return _console_input_blocked
+
 func _physics_process(delta: float) -> void:
 	if _command_mode_enabled:
 		return
@@ -76,8 +92,9 @@ func _physics_process(delta: float) -> void:
 		_set_aim_line_visible(false)
 		return
 
-	if _inventory_input_blocked:
-		_active_agent.set_agent_control_input(_get_world_move_direction(), Vector3.INF, false)
+	if _inventory_input_blocked or _console_input_blocked:
+		var blocked_move_direction := Vector3.ZERO if _console_input_blocked else _get_world_move_direction()
+		_active_agent.set_agent_control_input(blocked_move_direction, Vector3.INF, false)
 		_aim_camera_offset = Vector3.ZERO
 		_set_aim_line_visible(false)
 		_set_spread_preview_visible(false)
