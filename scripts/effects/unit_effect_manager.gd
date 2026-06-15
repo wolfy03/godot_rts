@@ -2,10 +2,12 @@ extends RefCounted
 class_name UnitEffectManager
 
 const ActiveUnitEffectScript := preload("res://scripts/effects/active_unit_effect.gd")
+const UnitEffectStatBlockScript := preload("res://scripts/effects/unit_effect_stat_block.gd")
 
 var _active_effects: Array = []
 var _next_effect_instance_id: int = 1
 var _needs_processing: bool = false
+var _stats = UnitEffectStatBlockScript.new()
 
 func apply(effect: UnitEffect, health_delta_callback: Callable = Callable()) -> int:
 	if effect == null:
@@ -25,14 +27,14 @@ func apply(effect: UnitEffect, health_delta_callback: Callable = Callable()) -> 
 	var instance = ActiveUnitEffectScript.new(_next_effect_instance_id, runtime_effect)
 	_next_effect_instance_id += 1
 	_active_effects.append(instance)
-	_refresh_processing_state()
+	_refresh_cached_state()
 	return instance.instance_id
 
 func remove_instance(instance_id: int) -> bool:
 	for index in range(_active_effects.size() - 1, -1, -1):
 		if _active_effects[index].instance_id == instance_id:
 			_active_effects.remove_at(index)
-			_refresh_processing_state()
+			_refresh_cached_state()
 			return true
 
 	return false
@@ -45,7 +47,7 @@ func remove_id(effect_id: StringName) -> bool:
 			removed = true
 
 	if removed:
-		_refresh_processing_state()
+		_refresh_cached_state()
 	return removed
 
 func has(effect_id: StringName) -> bool:
@@ -74,15 +76,11 @@ func process(delta: float, health_delta_callback: Callable = Callable()) -> bool
 				removed = true
 
 	if removed:
-		_refresh_processing_state()
+		_refresh_cached_state()
 	return removed
 
 func get_projectile_evasion_chance() -> float:
-	var effect_evasion_chance := 0.0
-	for active_effect in _active_effects:
-		effect_evasion_chance = maxf(effect_evasion_chance, active_effect.effect.projectile_evasion_chance)
-
-	return effect_evasion_chance
+	return _stats.projectile_evasion_chance
 
 func get_cover_projectile_evasion_chance(cover_effect_ids: Array) -> float:
 	var effect_evasion_chance := 0.0
@@ -101,64 +99,38 @@ func get_non_cover_projectile_evasion_chance(cover_effect_ids: Array) -> float:
 	return effect_evasion_chance
 
 func get_max_health_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.max_health_bonus
-	return bonus
+	return _stats.max_health_bonus
 
 func get_attack_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.attack_damage_bonus
-	return bonus
+	return _stats.attack_damage_bonus
 
 func get_melee_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.melee_damage_bonus
-	return bonus
+	return _stats.melee_damage_bonus
 
 func get_ranged_damage_bonus() -> int:
-	var bonus := 0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.ranged_damage_bonus
-	return bonus
+	return _stats.ranged_damage_bonus
 
 func get_melee_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.melee_range_bonus
-	return bonus
+	return _stats.melee_range_bonus
 
 func get_ranged_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.ranged_range_bonus
-	return bonus
+	return _stats.ranged_range_bonus
 
 func get_attack_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.attack_range_bonus
-	return bonus
+	return _stats.attack_range_bonus
 
 func get_attack_speed_multiplier() -> float:
-	var multiplier := 1.0
-	for active_effect in _active_effects:
-		multiplier *= active_effect.effect.attack_speed_multiplier
-	return maxf(multiplier, 0.01)
+	return _stats.attack_speed_multiplier
 
 func get_move_speed_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.move_speed_bonus
-	return bonus
+	return _stats.move_speed_bonus
 
 func get_vision_range_bonus() -> float:
-	var bonus := 0.0
-	for active_effect in _active_effects:
-		bonus += active_effect.effect.vision_range_bonus
-	return bonus
+	return _stats.vision_range_bonus
+
+func _refresh_cached_state() -> void:
+	_stats.rebuild(_active_effects)
+	_refresh_processing_state()
 
 func _refresh_processing_state() -> void:
 	_needs_processing = false

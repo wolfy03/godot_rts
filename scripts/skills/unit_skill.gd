@@ -1,6 +1,8 @@
 extends Resource
 class_name UnitSkill
 
+const SceneObjectPoolScript := preload("res://scripts/pooling/scene_object_pool.gd")
+
 enum SkillType {
 	ACTIVE,
 	PASSIVE,
@@ -111,15 +113,13 @@ func _spawn_arc_projectile(caster, target_position: Vector3) -> bool:
 	if projectile_scene == null or target_position == Vector3.INF:
 		return false
 
-	var projectile := projectile_scene.instantiate()
-	if projectile == null:
-		return false
-
 	var scene_root: Node = caster.get_tree().current_scene
 	if scene_root == null:
 		return false
 
-	scene_root.add_child(projectile)
+	var projectile := SceneObjectPoolScript.acquire_default(caster, projectile_scene, scene_root)
+	if projectile == null:
+		return false
 	if projectile.has_method("setup"):
 		projectile.setup(caster, self, target_position)
 	return true

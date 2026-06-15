@@ -21,6 +21,7 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 [autoload]
 
 MCPRuntime="*uid://12qsotlb7bw4"
+SceneObjectPoolService="*res://scripts/pooling/scene_object_pool.gd"
 
 [debug]
 

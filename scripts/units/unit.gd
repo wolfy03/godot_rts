@@ -15,6 +15,7 @@ const MACHINE_GUNNER_SKILL := preload("res://assets/skills/incendiary_round.tres
 const SNIPER_SKILL := preload("res://assets/skills/weak_point_shot.tres")
 const GameTeamData := preload("res://scripts/team/game_team.gd")
 const UnitEffectManagerScript := preload("res://scripts/effects/unit_effect_manager.gd")
+const SceneObjectPoolScript := preload("res://scripts/pooling/scene_object_pool.gd")
 const PLAYER_UNIT_MASK := 0b10
 const ENEMY_UNIT_MASK := 0b100
 const AIM_POINT_WEIGHTS := {
@@ -699,10 +700,13 @@ func _spawn_weapon_projectiles(muzzle_position: Vector3, base_direction: Vector3
 	var pellet_count := maxi(1, equipped_weapon.pellet_count)
 	var fired_count := 0
 	for pellet_index in pellet_count:
-		var projectile := equipped_weapon.projectile_scene.instantiate() as Projectile
+		var projectile := SceneObjectPoolScript.acquire_default(
+			self,
+			equipped_weapon.projectile_scene,
+			get_tree().current_scene
+		) as Projectile
 		if projectile == null:
 			continue
-		get_tree().current_scene.add_child(projectile)
 		projectile.global_position = muzzle_position
 		var pellet_spread := equipped_weapon.pellet_spread_angle_degrees if pellet_count > 1 else 0.0
 		projectile.setup_direction(attack_data, get_weapon_spread_direction(base_direction, pellet_spread))

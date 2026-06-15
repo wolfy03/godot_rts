@@ -1,6 +1,8 @@
 extends Node3D
 class_name Projectile
 
+const SceneObjectPoolScript := preload("res://scripts/pooling/scene_object_pool.gd")
+
 @export var speed: float = 18.0
 @export var hit_distance: float = 0.25
 @export var max_lifetime: float = 4.0
@@ -13,6 +15,13 @@ var _attack_data = null
 var _miss_direction: Vector3 = Vector3.ZERO
 var _direct_direction: Vector3 = Vector3.ZERO
 var _lifetime: float = 0.0
+var _incendiary_trail: GPUParticles3D
+
+func on_pool_acquired() -> void:
+	_reset_runtime_state()
+
+func on_pool_released() -> void:
+	_reset_runtime_state()
 
 func setup(target, attack_data, miss_position: Vector3 = Vector3.INF) -> void:
 	_target = target
@@ -32,7 +41,7 @@ func setup_direction(attack_data, direction: Vector3) -> void:
 func _process(delta: float) -> void:
 	_lifetime += delta
 	if _lifetime >= max_lifetime:
-		queue_free()
+		_release_to_pool()
 		return
 
 	if _is_aimed_miss():
@@ -44,7 +53,7 @@ func _process(delta: float) -> void:
 
 	var target_position := _get_current_target_position()
 	if target_position == Vector3.INF:
-		queue_free()
+		_release_to_pool()
 		return
 
 	var to_target := target_position - global_position
@@ -56,7 +65,7 @@ func _process(delta: float) -> void:
 
 	if distance <= hit_distance:
 		_apply_impact_to(_target)
-		queue_free()
+		_release_to_pool()
 		return
 
 	global_position = next_position
@@ -65,7 +74,7 @@ func _process(delta: float) -> void:
 
 func _process_miss(delta: float) -> void:
 	if _miss_direction == Vector3.ZERO:
-		queue_free()
+		_release_to_pool()
 		return
 
 	var next_position := global_position + _miss_direction * speed * delta
@@ -99,7 +108,7 @@ func _process_collision_between(from: Vector3, to: Vector3) -> bool:
 	if unit != null:
 		_apply_impact_to(unit)
 
-	queue_free()
+	_release_to_pool()
 	return true
 
 func _get_collision_between(from: Vector3, to: Vector3) -> Dictionary:
@@ -196,6 +205,7 @@ func _is_player_agent_source(source) -> bool:
 	return source.is_in_group("player_agent") if source is Node else false
 
 func _add_incendiary_trail() -> void:
+	_remove_incendiary_trail()
 	var particles := GPUParticles3D.new()
 	particles.name = "IncendiaryTrail"
 	particles.position = Vector3(0.0, 0.0, 0.18)
@@ -239,3 +249,20 @@ func _add_incendiary_trail() -> void:
 	particle_mesh.material = draw_material
 	particles.draw_pass_1 = particle_mesh
 	add_child(particles)
+	_incendiary_trail = particles
+
+func _release_to_pool() -> void:
+	SceneObjectPoolScript.release_instance(self)
+
+func _reset_runtime_state() -> void:
+	_target = null
+	_attack_data = null
+	_miss_direction = Vector3.ZERO
+	_direct_direction = Vector3.ZERO
+	_lifetime = 0.0
+	_remove_incendiary_trail()
+
+func _remove_incendiary_trail() -> void:
+	if _incendiary_trail != null and is_instance_valid(_incendiary_trail):
+		_incendiary_trail.free()
+	_incendiary_trail = null

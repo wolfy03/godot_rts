@@ -1,6 +1,8 @@
 extends RigidBody3D
 class_name GrenadeProjectile
 
+const SceneObjectPoolScript := preload("res://scripts/pooling/scene_object_pool.gd")
+
 @export var speed: float = 11.0
 @export var fuse_time: float = 3.5
 @export var min_duration: float = 0.35
@@ -13,10 +15,32 @@ var _caster_team_mask: int = 0
 var _skill: Resource
 var _fuse_elapsed: float = 0.0
 var _detonated: bool = false
+var _default_collision_layer: int
+var _default_collision_mask: int
+
+func _ready() -> void:
+	_default_collision_layer = collision_layer
+	_default_collision_mask = collision_mask
+
+func on_pool_acquired() -> void:
+	_reset_runtime_state()
+	freeze = false
+	collision_layer = _default_collision_layer
+	collision_mask = _default_collision_mask
+	sleeping = false
+
+func on_pool_released() -> void:
+	_reset_runtime_state()
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	sleeping = true
+	freeze = true
+	collision_layer = 0
+	collision_mask = 0
 
 func setup(caster, skill: Resource, target_position: Vector3) -> void:
 	if caster == null or skill == null or target_position == Vector3.INF:
-		queue_free()
+		_release_to_pool()
 		return
 
 	_caster_ref = weakref(caster)
@@ -31,7 +55,7 @@ func setup(caster, skill: Resource, target_position: Vector3) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _skill == null or _detonated:
-		queue_free()
+		_release_to_pool()
 		return
 
 	_fuse_elapsed += delta
@@ -82,7 +106,7 @@ func _detonate() -> void:
 		if _skill.effect != null:
 			unit.apply_effect(_skill.effect)
 
-	queue_free()
+	_release_to_pool()
 
 func _get_valid_caster():
 	if _caster_ref == null:
@@ -102,3 +126,15 @@ func _can_affect_unit(unit, source) -> bool:
 	if _caster_team_mask != 0 and unit_team_mask != 0 and unit_team_mask != _caster_team_mask:
 		return bool(_skill.affects_enemies)
 	return false
+
+func _release_to_pool() -> void:
+	SceneObjectPoolScript.release_instance(self)
+
+func _reset_runtime_state() -> void:
+	_caster_ref = null
+	_caster_team_mask = 0
+	_skill = null
+	_fuse_elapsed = 0.0
+	_detonated = false
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
