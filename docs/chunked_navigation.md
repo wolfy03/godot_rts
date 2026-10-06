@@ -89,8 +89,12 @@ Completion clears dirty only when they still match; otherwise it queues one
 additional bake. Only one manager bake is active at a time. Reinitialization
 disables/removes old regions and ignores stale completions by generation.
 `chunk_bake_finished` means mesh assignment finished, not that the navigation
-map has synchronized. Tests wait for region iteration changes before querying
-updated polygons.
+map has synchronized. Region and map iterations are separate asynchronous
+snapshots. Integration tests wait for queue completion, region iteration changes
+and the scenario's observable map state (connected final path or changed obstacle
+floor) with a bounded timeout. They do not assume two physics frames guarantee
+that the new polygons are queryable. Level and long-move tests also wait for a
+connected server path before issuing their single final target.
 
 MoveState allows physics frames for target/path updates, then cancels invalid,
 blocked, empty or unreachable paths and returns to Idle. Floor clicks may differ

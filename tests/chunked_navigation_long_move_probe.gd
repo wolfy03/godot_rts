@@ -12,22 +12,23 @@ func _ready() -> void:
 
 	var unit := level.get_node("UnitsContainer/TestAIUnit") as Unit
 	var navigation := level.get_node("ChunkedNavigation") as ChunkedUnitNavigation
+	var target: Vector3 = Vector3(20.0, unit.global_position.y, 20.0)
+	var navigation_map: RID = unit.navigation_agent.get_navigation_map()
 	var bake_ready: bool = false
 	for frame in range(2400):
 		await get_tree().physics_frame
 		var snapshot: Dictionary = navigation.get_debug_snapshot()
-		if snapshot.queued_count == 0 and not snapshot.bake_active:
-			bake_ready = true
-			break
+		if snapshot.queued_count == 0 and not snapshot.bake_active and NavigationServer3D.map_get_iteration_id(navigation_map) != 0:
+			var path: PackedVector3Array = NavigationServer3D.map_get_path(navigation_map, unit.global_position, target, true)
+			if not path.is_empty() and Vector2(path[-1].x, path[-1].z).distance_to(Vector2(target.x, target.z)) < 0.1:
+				bake_ready = true
+				break
 	if not bake_ready:
-		push_error("long move must wait for real level bake")
+		push_error("long move must wait for real level bake and connected server path")
 		get_tree().quit(1)
 		return
-	await get_tree().physics_frame
-	await get_tree().physics_frame
 	var start_position := unit.global_position
 	var start_chunk := navigation.get_chunk_coords(start_position)
-	var target: Vector3 = Vector3(20.0, unit.global_position.y, 20.0)
 	unit.navigation_agent.target_desired_distance = 0.5
 	unit.navigation_agent.target_position = target
 	var visited: Array[Vector2i] = []

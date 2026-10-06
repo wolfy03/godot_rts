@@ -17,7 +17,7 @@ func _ready() -> void:
 	# Invalidate twice AFTER parsing the first snapshot, before async completion.
 	_navigation.chunk_bake_requested.connect(_redirty_during_bake)
 	_dirty_all()
-	if not await _wait_for_bakes():
+	if not await _wait_for_bakes(_server_connects_regions):
 		_finish()
 		return
 	_expect(_stats(Vector2i(1, 0)).bake_finished_count == 2,
@@ -50,7 +50,7 @@ func _ready() -> void:
 	_expect(not temporary.use_3d_avoidance and temporary.avoidance_layers == _unit.navigation_agent.avoidance_mask,
 		"temporary obstacle must use the same ground avoidance layers")
 	_expect(not temporary.affect_navigation_mesh, "temporary avoidance must not supply duplicate bake geometry")
-	await _wait_for_bakes()
+	await _wait_for_bakes(_server_floor_matches.bind(false))
 	_expect(_stats(Vector2i(1, 0)).bake_finished_count > before_a and _stats(Vector2i(2, 0)).bake_finished_count > before_b,
 		"both boundary region meshes must be rebaked")
 	var obstacle_floor: Vector3 = Vector3(22.0, 2.25, -3.0)
@@ -70,7 +70,7 @@ func _ready() -> void:
 	obstacle.free()
 	_expect(_navigation.is_chunk_dirty(Vector2i(1, 0)) and _navigation.is_chunk_dirty(Vector2i(2, 0)),
 		"removal must dirty both registered bounds chunks")
-	await _wait_for_bakes()
+	await _wait_for_bakes(_server_floor_matches.bind(true))
 	closest = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, obstacle_floor)
 	_expect(_horizontal_distance(closest, obstacle_floor) < 0.1 and absf(closest.y - obstacle_floor.y) < 0.5,
 		"removed obstacle floor must be restored")
@@ -128,7 +128,7 @@ func _redirty_during_bake(coords: Vector2i, _region: NavigationRegion3D) -> void
 		_navigation.mark_chunk_dirty(coords)
 		_navigation.mark_chunk_dirty(coords)
 
-func _wait_for_bakes() -> bool:
+func _wait_for_bakes(map_condition: Callable) -> bool:
 	var previous_iterations: Dictionary[Vector2i, int] = {}
 	for chunk: Dictionary in _navigation.get_debug_snapshot().chunks:
 		if chunk.dirty or chunk.baking:
@@ -143,13 +143,24 @@ func _wait_for_bakes() -> bool:
 		for coords: Vector2i in previous_iterations:
 			var region: NavigationRegion3D = _navigation.get_chunk_region(coords)
 			done = done and NavigationServer3D.region_get_iteration_id(region.get_rid()) > previous_iterations[coords]
-		if done:
-			# Region assignment synchronizes on subsequent physics frames.
-			await get_tree().physics_frame
-			await get_tree().physics_frame
+		# Region iteration and map iteration are separate asynchronous snapshots.
+		# Queue completion plus a fixed frame count can still query an older map.
+		# Wait for the scenario's observable map state, with a bounded timeout.
+		if done and NavigationServer3D.map_get_iteration_id(get_world_3d().navigation_map) != 0 and map_condition.call():
 			return true
-	_expect(false, "runtime bake queue timed out")
+	_expect(false, "runtime bake queue or map synchronization timed out")
 	return false
+
+func _server_connects_regions() -> bool:
+	var path: PackedVector3Array = NavigationServer3D.map_get_path(get_world_3d().navigation_map, START, TARGET, true)
+	return not path.is_empty() and _horizontal_distance(path[path.size() - 1], TARGET) < 0.1
+
+func _server_floor_matches(present: bool) -> bool:
+	var floor_position: Vector3 = Vector3(22.0, 2.25, -3.0)
+	var closest: Vector3 = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, floor_position)
+	if present:
+		return _horizontal_distance(closest, floor_position) < 0.1 and absf(closest.y - floor_position.y) < 0.5
+	return _horizontal_distance(closest, floor_position) > 1.0 or absf(closest.y - floor_position.y) > 1.0
 
 func _verify_region_meshes() -> void:
 	for x in range(4):
@@ -233,7 +244,7 @@ func _test_live_repath() -> void:
 		await get_tree().physics_frame
 	var obstacle: StaticBody3D = _box(Vector3(22.0, 3.0, -3.0), Vector3(2.0, 2.0, 3.0))
 	_navigation.register_dynamic_obstacle(obstacle, false)
-	await _wait_for_bakes()
+	await _wait_for_bakes(_server_floor_matches.bind(false))
 	var maximum_detour: float = 0.0
 	for frame in range(900):
 		await get_tree().physics_frame
@@ -245,7 +256,7 @@ func _test_live_repath() -> void:
 	_expect(_unit.navigation_agent.target_position == TARGET, "repath must retain the original final target")
 	_navigation.unregister_dynamic_obstacle(obstacle)
 	obstacle.free()
-	await _wait_for_bakes()
+	await _wait_for_bakes(_server_floor_matches.bind(true))
 
 func _expect_failed_command(target: Vector3, attack_move: bool) -> void:
 	var command: MoveState.MoveCommandData = MoveState.MoveCommandData.new()

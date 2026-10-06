@@ -14,19 +14,24 @@ func _ready() -> void:
 	_expect(unit != null, "test unit should exist")
 	var navigation := level.get_node("ChunkedNavigation") as ChunkedUnitNavigation
 	_expect(navigation != null, "chunked navigation manager should exist")
+	var target_position := Vector3(20.0, unit.global_position.y, 20.0)
+	var navigation_map: RID = unit.navigation_agent.get_navigation_map()
 	var bake_ready: bool = false
 	for frame in range(2400):
 		await get_tree().physics_frame
 		var snapshot: Dictionary = navigation.get_debug_snapshot()
-		if snapshot.queued_count == 0 and not snapshot.bake_active:
-			bake_ready = true
-			break
-	_expect(bake_ready, "real level ground bake must finish")
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+		if snapshot.queued_count == 0 and not snapshot.bake_active and NavigationServer3D.map_get_iteration_id(navigation_map) != 0:
+			# A finished region bake does not guarantee the map snapshot is current.
+			var path: PackedVector3Array = NavigationServer3D.map_get_path(navigation_map, unit.global_position, target_position, true)
+			if not path.is_empty() and Vector2(path[-1].x, path[-1].z).distance_to(Vector2(target_position.x, target_position.z)) < 0.1:
+				bake_ready = true
+				break
+	_expect(bake_ready, "real level ground bake and connected server path must finish")
+	if not bake_ready:
+		get_tree().quit(1)
+		return
 	var unit_start_position := unit.global_position
 	var start_chunk: Vector2i = navigation.get_chunk_coords(unit_start_position)
-	var target_position := Vector3(20.0, unit.global_position.y, 20.0)
 
 	unit.navigation_agent.target_desired_distance = 0.5
 	var command: MoveState.MoveCommandData = MoveState.MoveCommandData.new()
