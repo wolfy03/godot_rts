@@ -1533,7 +1533,11 @@ func _physics_process(_delta: float) -> void:
 	var new_velocity: Vector3 = next_path_pos - global_position
 	new_velocity.y = 0
 	new_velocity = new_velocity.normalized() * navigation_agent.max_speed
-	navigation_agent.velocity = new_velocity
+	if navigation_agent.avoidance_enabled:
+		navigation_agent.velocity = new_velocity
+	else:
+		velocity = new_velocity
+		move_and_slide()
 
 	_look_at_ground_position(navigation_agent.target_position)
 

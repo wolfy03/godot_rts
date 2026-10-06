@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://chunkedunitnavigationtest"]
+
+[ext_resource type="Script" path="res://tests/chunked_unit_navigation_test.gd" id="1_test"]
+
+[node name="ChunkedUnitNavigationTest" type="Node"]
+script = ExtResource("1_test")

@@ -54,7 +54,7 @@ func _input(event: InputEvent) -> void:
 	if _selected_units.is_empty():
 		return
 
-	if Input.is_action_just_pressed(ACTION_UNIT_MOVE):
+	if _is_move_command_event(event):
 		_set_pending_command(COMMAND_NONE)
 		var target_unit := _get_enemy_unit_under_mouse()
 		if target_unit:
@@ -182,6 +182,13 @@ func _is_left_mouse_button_pressed(event: InputEvent) -> bool:
 
 	var mouse_button_event := event as InputEventMouseButton
 	return mouse_button_event.button_index == MOUSE_BUTTON_LEFT and mouse_button_event.pressed
+
+func _is_move_command_event(event: InputEvent) -> bool:
+	var mouse_button_event := event as InputEventMouseButton
+	if mouse_button_event != null and mouse_button_event.button_index == MOUSE_BUTTON_RIGHT:
+		return not mouse_button_event.pressed
+
+	return event.is_action_pressed(ACTION_UNIT_MOVE) or event.is_action_released(ACTION_UNIT_MOVE)
 
 func _is_pointer_over_command_panel(event: InputEvent) -> bool:
 	if not (event is InputEventMouseButton or event is InputEventMouseMotion):

@@ -1,0 +1,51 @@
+[gd_scene format=3 uid="uid://dnwo7qo44cxb0"]
+
+[ext_resource type="Script" uid="uid://2vtmgu8082fw" path="res://scripts/tests/chunked_navigation_test_level.gd" id="1_level"]
+[ext_resource type="Script" uid="uid://dj48q3obiv0mc" path="res://scripts/navigation/chunked_unit_navigation.gd" id="2_navigation"]
+[ext_resource type="PackedScene" uid="uid://dr3dx0phgxkof" path="res://scenes/units/base_units/base_unit.tscn" id="3_unit"]
+[ext_resource type="PackedScene" uid="uid://devcefa5ovfxj" path="res://scenes/input/unit_commands/unit_command_controller.tscn" id="4_command"]
+[ext_resource type="PackedScene" uid="uid://cwh2eb5hud7ca" path="res://scenes/input/unit_selection/unit_selection.tscn" id="5_selection"]
+[ext_resource type="Script" uid="uid://bxv3d3hwtdv5p" path="res://scripts/input/camera_controls.gd" id="6_camera"]
+
+[node name="ChunkedNavigationTestLevel" type="Node3D" unique_id=1930560051]
+script = ExtResource("1_level")
+
+[node name="MapTiles" type="Node3D" parent="." unique_id=770110929]
+
+[node name="NavigationRegions" type="Node3D" parent="." unique_id=1400365855]
+
+[node name="ChunkedNavigation" type="Node" parent="." unique_id=620854387]
+script = ExtResource("2_navigation")
+auto_initialize = false
+navigation_region_parent_path = NodePath("../NavigationRegions")
+bake_on_dirty = false
+
+[node name="UnitsContainer" type="Node3D" parent="." unique_id=738280260]
+
+[node name="TestAIUnit" parent="UnitsContainer" unique_id=561715044 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+team_id = 1
+is_player_controllable = true
+
+[node name="Input" type="Node" parent="." unique_id=826007487]
+
+[node name="Camera" type="Camera3D" parent="Input" unique_id=717537329]
+transform = Transform3D(1, 0, 0, 0, 0.52991927, 0.8480481, 0, -0.8480481, 0.52991927, 0, 36, 23)
+current = true
+fov = 55.0
+script = ExtResource("6_camera")
+follow_enabled = false
+max_zoom_distance = 80.0
+
+[node name="UnitCommandController" parent="Input" unique_id=1325063373 instance=ExtResource("4_command")]
+
+[node name="UnitSelection" parent="Input" unique_id=1918951 instance=ExtResource("5_selection")]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1769770999]
+transform = Transform3D(0.70710677, -0.35355338, 0.6123724, 0, 0.8660254, 0.5, -0.70710677, -0.35355338, 0.6123724, 0, 20, 0)
+light_energy = 2.5
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=210726400]
+
+[connection signal="command_targeting_changed" from="Input/UnitCommandController" to="Input/UnitSelection" method="command_targeting_changed"]
+[connection signal="unit_selection_changed" from="Input/UnitSelection" to="Input/UnitCommandController" method="unit_selection_changed"]

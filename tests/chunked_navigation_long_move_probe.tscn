@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://7dqq8svuwpva"]
+
+[ext_resource type="Script" path="res://tests/chunked_navigation_long_move_probe.gd" id="1_probe"]
+
+[node name="ChunkedNavigationLongMoveProbe" type="Node"]
+script = ExtResource("1_probe")

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c7fgb7iexu6bb"]
+
+[ext_resource type="Script" path="res://tests/chunked_navigation_level_navigation_test.gd" id="1_test"]
+
+[node name="ChunkedNavigationLevelNavigationTest" type="Node"]
+script = ExtResource("1_test")
