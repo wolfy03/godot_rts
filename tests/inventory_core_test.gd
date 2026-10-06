@@ -92,7 +92,7 @@ func _test_inventory_container_moves_between_grids() -> void:
 	var item := _make_item(&"bandage", Vector2i(1, 1))
 	var stack := InventoryItemStackScript.new()
 	stack.item = item
-	var placement := backpack.place(stack, Vector2i(0, 0))
+	var placement: Resource = backpack.place(stack, Vector2i(0, 0))
 
 	_expect(inventory.move_between_grids(&"backpack", placement, &"pouch", Vector2i(1, 1)), "inventory container should move placements between grids")
 	_expect(backpack.get_placement_for_stack(stack) == null, "source grid should release moved stack")

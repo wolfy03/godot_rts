@@ -92,6 +92,40 @@ func get_cover_slots() -> Array[Marker3D]:
 
 	return slots
 
+## Compatibility view of every existing slot, including occupied/blocked slots.
+## This does not reserve slots or evaluate candidates. Each call makes snapshots.
+func get_cover_candidates() -> Array[CoverCandidate]:
+	var candidates: Array[CoverCandidate] = []
+	for slot in get_cover_slots():
+		var candidate: CoverCandidate = create_candidate_from_slot(slot)
+		if candidate != null:
+			candidates.append(candidate)
+	return candidates
+
+## Convert only this Cover's direct Marker slots. Call with the Cover in-tree
+## so the snapshot captures the slot's world position.
+func create_candidate_from_slot(slot: Marker3D) -> CoverCandidate:
+	if not is_instance_valid(slot):
+		return null
+	var slots_parent: Node = get_node_or_null("CoverSlots")
+	if slots_parent == null or slot.get_parent() != slots_parent:
+		return null
+
+	var candidate: CoverCandidate = CoverCandidate.new()
+	candidate.position = slot.global_position
+	candidate.source = self
+	# Temporary compatibility rule: geometry analysis will eventually determine
+	# stance instead of CoverGrade. LOW/MEDIUM crouch; HIGH stands.
+	match grade:
+		CoverGrade.LOW, CoverGrade.MEDIUM:
+			candidate.stance = CoverStance.Type.CROUCHING
+		CoverGrade.HIGH:
+			candidate.stance = CoverStance.Type.STANDING
+	# Instance ID isolates covers; relative slot path distinguishes their slots
+	# and keeps keys stable when the Cover is renamed or reparented.
+	candidate.reservation_key = StringName("%d:%s" % [get_instance_id(), get_path_to(slot)])
+	return candidate
+
 func is_slot_blocked(slot: Marker3D) -> bool:
 	if not slot_blocked_check_enabled or slot == null:
 		return false
