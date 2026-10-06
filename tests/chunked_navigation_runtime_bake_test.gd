@@ -43,7 +43,7 @@ func _ready() -> void:
 	var obstacle: StaticBody3D = _box(Vector3(22.0, 3.0, -3.0), Vector3(2.0, 2.0, 3.0))
 	var before_a: int = _stats(Vector2i(1, 0)).bake_finished_count
 	var before_b: int = _stats(Vector2i(2, 0)).bake_finished_count
-	_navigation.register_dynamic_obstacle(obstacle, true, 1.7, 2.0)
+	_navigation.register_solid_blocker(obstacle, true, 1.7, 2.0)
 	_expect(_navigation.is_chunk_dirty(Vector2i(1, 0)) and _navigation.is_chunk_dirty(Vector2i(2, 0)),
 		"boundary obstacle must dirty both chunks")
 	var temporary: NavigationObstacle3D = obstacle.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
@@ -66,7 +66,7 @@ func _ready() -> void:
 	_expect(await _travel(true), "unit must detour with ground avoidance on")
 	_report("dynamic obstacle add / avoidance on")
 
-	_navigation.unregister_dynamic_obstacle(obstacle, true)
+	_navigation.unregister_navigation_geometry(obstacle, true)
 	obstacle.free()
 	_expect(_navigation.is_chunk_dirty(Vector2i(1, 0)) and _navigation.is_chunk_dirty(Vector2i(2, 0)),
 		"removal must dirty both registered bounds chunks")
@@ -79,6 +79,8 @@ func _ready() -> void:
 	_report("dynamic obstacle remove")
 	await _test_live_repath()
 	_report("automatic repath during movement")
+	await _test_dynamic_geometry_opening()
+	_report("dynamic geometry / collider parsing / open gap")
 	await _test_move_failures()
 	_report("invalid / blocked / unreachable / empty-map moves")
 	_finish()
@@ -230,6 +232,65 @@ func _test_move_failures() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	await _expect_failed_command(TARGET, false)
+	await _test_configurable_path_timeout()
+	_report("configurable path timeout (>0.5s)")
+
+func _test_configurable_path_timeout() -> void:
+	var state: MoveState = _unit.state_machine.get_node("MoveState") as MoveState
+	_expect(is_equal_approx(state.navigation_map_ready_timeout, 1.0)
+		and is_equal_approx(state.navigation_path_ready_timeout, 1.0), "default navigation timeouts must both be one second")
+	state.navigation_path_ready_timeout = 1.4
+	var command: MoveState.MoveCommandData = MoveState.MoveCommandData.new()
+	command.target_position = TARGET
+	command.attack_move = false
+	_unit.begin_player_command(Unit.PlayerCommandMode.MOVE)
+	_unit.state_machine.transition_to_state(MoveState.ID, command)
+	for frame in range(120):
+		await get_tree().physics_frame
+		if state._path_wait_seconds >= 0.6 or _unit.state_machine.is_current_state(IdleState.ID):
+			break
+	_expect(_unit.state_machine.is_current_state(MoveState.ID) and state._path_wait_seconds >= 0.6,
+		"an empty path must still wait after the old 0.5 second timeout")
+	for frame in range(180):
+		await get_tree().physics_frame
+		if _unit.state_machine.is_current_state(IdleState.ID):
+			break
+	_expect(_unit.state_machine.is_current_state(IdleState.ID) and state._path_wait_seconds >= 1.4,
+		"an empty path must cancel only at the configured timeout")
+	_expect(not _unit.blocks_auto_cover() and _unit.last_move_command_data == null,
+		"timeout must clear command bookkeeping")
+	state.navigation_path_ready_timeout = 1.0
+
+func _test_dynamic_geometry_opening() -> void:
+	# Two wall fragments share a large AABB but leave a real passage in its middle.
+	var fragments: Node3D = Node3D.new()
+	_geometry.add_child(fragments)
+	fragments.global_transform = Transform3D(Basis.IDENTITY, Vector3(22.0, 3.0, -3.0))
+	for z: float in [-6.0, 0.0]:
+		var fragment: StaticBody3D = _box(Vector3(22.0, 3.0, z), Vector3(1.0, 2.0, 2.0))
+		fragment.reparent(fragments, true)
+	_navigation.register_dynamic_geometry(fragments, false)
+	_expect(_navigation.get_debug_snapshot().dynamic_geometry_count == 1
+		and _navigation.get_debug_snapshot().solid_blocker_count == 0, "fragmented geometry must not register a solid AABB")
+	_expect(_navigation.is_chunk_dirty(Vector2i(1, 0)) and _navigation.is_chunk_dirty(Vector2i(2, 0)),
+		"fragment bounds must dirty both boundary chunks")
+	await _wait_for_bakes(_server_fragment_floor_matches.bind(false))
+	_expect(await _travel(false), "unit must traverse the real opening inside the registered bounds")
+	_expect(_max_detour < 0.5, "dynamic geometry must not block the empty middle of its AABB")
+	_navigation.unregister_navigation_geometry(fragments)
+	fragments.free()
+	await _wait_for_bakes(_server_fragment_floor_matches.bind(true))
+
+func _server_fragment_floor_matches(present: bool) -> bool:
+	if not _server_connects_regions() or not _server_floor_matches(true):
+		return false
+	for z: float in [-6.0, 0.0]:
+		var floor_position: Vector3 = Vector3(22.0, 2.25, z)
+		var closest: Vector3 = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, floor_position)
+		var has_floor: bool = _horizontal_distance(closest, floor_position) < 0.1 and absf(closest.y - floor_position.y) < 0.5
+		if has_floor != present:
+			return false
+	return true
 
 func _test_live_repath() -> void:
 	_unit.global_position = START
@@ -243,7 +304,7 @@ func _test_live_repath() -> void:
 	for frame in range(30):
 		await get_tree().physics_frame
 	var obstacle: StaticBody3D = _box(Vector3(22.0, 3.0, -3.0), Vector3(2.0, 2.0, 3.0))
-	_navigation.register_dynamic_obstacle(obstacle, false)
+	_navigation.register_solid_blocker(obstacle, false)
 	await _wait_for_bakes(_server_floor_matches.bind(false))
 	var maximum_detour: float = 0.0
 	for frame in range(900):
@@ -254,7 +315,7 @@ func _test_live_repath() -> void:
 	_expect(_horizontal_distance(_unit.global_position, TARGET) < 0.5 and maximum_detour > 1.7,
 		"map update must automatically repath a moving unit around the new collider")
 	_expect(_unit.navigation_agent.target_position == TARGET, "repath must retain the original final target")
-	_navigation.unregister_dynamic_obstacle(obstacle)
+	_navigation.unregister_navigation_geometry(obstacle)
 	obstacle.free()
 	await _wait_for_bakes(_server_floor_matches.bind(true))
 

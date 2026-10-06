@@ -57,7 +57,8 @@ var _bake_timer: SceneTreeTimer
 var _initialized: bool = false
 var _bake_active: bool = false
 var _generation: int = 0
-var _obstacle_bounds: Dictionary[int, AABB] = {}
+var _dynamic_geometry_bounds: Dictionary[int, AABB] = {}
+var _solid_blocker_bounds: Dictionary[int, AABB] = {}
 
 func _ready() -> void:
 	add_to_group("chunked_unit_navigation")
@@ -66,6 +67,9 @@ func _ready() -> void:
 
 func initialize_chunks() -> void:
 	clear_chunks()
+	if not _validate_chunk_settings() or not _validate_navigation_voxel_settings():
+		return
+	_warn_source_root_transform()
 	_configure_astar()
 	var navigation_map: RID = get_viewport().world_3d.navigation_map
 	NavigationServer3D.map_set_edge_connection_margin(navigation_map, edge_connection_margin)
@@ -79,6 +83,40 @@ func initialize_chunks() -> void:
 			_chunks[_chunk_key(coords)] = data
 
 	_initialized = true
+
+func _validate_chunk_settings() -> bool:
+	if map_chunk_count.x <= 0 or map_chunk_count.y <= 0:
+		push_error("[NAV] map_chunk_count must be positive. count=%s" % map_chunk_count)
+		return false
+	if not chunk_size.is_finite() or chunk_size.x <= 0.0 or chunk_size.y <= 0.0:
+		push_error("[NAV] chunk_size must be finite and positive. size=%s" % chunk_size)
+		return false
+	return true
+
+func _validate_navigation_voxel_settings() -> bool:
+	var mesh: NavigationMesh = _new_navigation_mesh()
+	var navigation_map: RID = get_viewport().world_3d.navigation_map
+	var map_cell_size: float = NavigationServer3D.map_get_cell_size(navigation_map)
+	var map_cell_height: float = NavigationServer3D.map_get_cell_height(navigation_map)
+	var matches: bool = true
+	if not is_equal_approx(mesh.cell_size, map_cell_size):
+		push_error("[NAV] NavigationMesh cell_size mismatch. mesh=%f map=%f" % [mesh.cell_size, map_cell_size])
+		matches = false
+	if not is_equal_approx(mesh.cell_height, map_cell_height):
+		push_error("[NAV] NavigationMesh cell_height mismatch. mesh=%f map=%f" % [mesh.cell_height, map_cell_height])
+		matches = false
+	return matches
+
+func _warn_source_root_transform() -> void:
+	var root: Node3D = get_node_or_null(source_geometry_root_path) as Node3D if source_geometry_root_path != NodePath() else null
+	if root == null:
+		return
+	var basis: Basis = root.global_basis
+	if not basis.y.normalized().is_equal_approx(Vector3.UP):
+		push_warning("[NAV] Source geometry root is tilted. Projected XZ obstructions require an upright root.")
+	var scale: Vector3 = basis.get_scale().abs()
+	if not is_equal_approx(scale.x, scale.y) or not is_equal_approx(scale.y, scale.z):
+		push_warning("[NAV] Source geometry root has non-uniform scale. Projected XZ obstructions may not match geometry.")
 
 func clear_chunks() -> void:
 	_generation += 1
@@ -144,7 +182,7 @@ func set_chunk_walkable(coords: Vector2i, walkable: bool) -> void:
 
 ## Coarse preflight only. The NavigationAgent verifies the actual polygon path.
 func is_world_position_navigable(world_position: Vector3) -> bool:
-	return world_position.is_finite() and is_chunk_walkable(get_chunk_coords(world_position))
+	return _initialized and world_position.is_finite() and is_chunk_walkable(get_chunk_coords(world_position))
 
 func mark_chunk_dirty(coords: Vector2i) -> void:
 	var data := _get_chunk_data(coords)
@@ -171,6 +209,8 @@ func mark_chunks_dirty_for_bounds(world_bounds: AABB) -> void:
 
 ## Geometry changes affect neighboring bake halos as well as the touched chunk.
 func mark_world_bounds_dirty(world_bounds: AABB) -> void:
+	if not _initialized:
+		return
 	var halo: float = _get_bake_border(_new_navigation_mesh())
 	var min_coords: Vector2i = get_chunk_coords(world_bounds.position - Vector3(halo, 0.0, halo))
 	var max_coords: Vector2i = get_chunk_coords(world_bounds.end + Vector3(halo, 0.0, halo))
@@ -181,52 +221,74 @@ func mark_world_bounds_dirty(world_bounds: AABB) -> void:
 		for x in range(min_coords.x, max_coords.x + 1):
 			mark_chunk_dirty(Vector2i(x, z))
 
-func register_dynamic_obstacle(
-	obstacle_node: Node3D,
+## Actual collider geometry is parsed from the source root; openings stay open.
+func register_dynamic_geometry(
+	geometry_node: Node3D,
 	add_temporary_navigation_obstacle: bool = true,
 	avoidance_radius: float = -1.0,
 	avoidance_height: float = -1.0
 ) -> Vector2i:
-	if not is_instance_valid(obstacle_node):
+	return _register_navigation_geometry(geometry_node, false, add_temporary_navigation_obstacle, avoidance_radius, avoidance_height)
+
+## Explicit opt-in for objects whose entire world AABB is unwalkable.
+func register_solid_blocker(
+	blocker_node: Node3D,
+	add_temporary_navigation_obstacle: bool = true,
+	avoidance_radius: float = -1.0,
+	avoidance_height: float = -1.0
+) -> Vector2i:
+	return _register_navigation_geometry(blocker_node, true, add_temporary_navigation_obstacle, avoidance_radius, avoidance_height)
+
+func _register_navigation_geometry(
+	geometry_node: Node3D,
+	solid_blocker: bool,
+	add_temporary_navigation_obstacle: bool = true,
+	avoidance_radius: float = -1.0,
+	avoidance_height: float = -1.0
+) -> Vector2i:
+	if not _initialized or not is_instance_valid(geometry_node):
 		return Vector2i(-1, -1)
 
-	var coords := get_chunk_coords(obstacle_node.global_position)
-	var instance_id: int = obstacle_node.get_instance_id()
-	if _obstacle_bounds.has(instance_id):
-		mark_world_bounds_dirty(_obstacle_bounds[instance_id])
-	# Registered obstacles are solid blockers: their conservative world AABB
-	# also supplies a projected bake obstruction. Parsing closed collider surfaces
-	# alone can leave disconnected interior floor islands at chunk boundaries.
-	# For geometry-only changes (e.g. arches), use mark_world_bounds_dirty instead.
-	var bounds: AABB = get_obstacle_world_bounds(obstacle_node, avoidance_radius, avoidance_height)
-	_obstacle_bounds[instance_id] = bounds
+	var coords := get_chunk_coords(geometry_node.global_position)
+	var instance_id: int = geometry_node.get_instance_id()
+	# Re-registration can also change the role. Dirty old bounds and keep the
+	# registries disjoint so a former solid blocker cannot keep carving openings.
+	_unregister_navigation_geometry_by_id(instance_id)
+	var bounds: AABB = get_obstacle_world_bounds(geometry_node, avoidance_radius, avoidance_height)
+	if solid_blocker:
+		_solid_blocker_bounds[instance_id] = bounds
+	else:
+		_dynamic_geometry_bounds[instance_id] = bounds
 	mark_world_bounds_dirty(bounds)
-	var on_exit: Callable = unregister_dynamic_obstacle_by_id.bind(instance_id)
-	if not obstacle_node.tree_exiting.is_connected(on_exit):
-		obstacle_node.tree_exiting.connect(on_exit, CONNECT_ONE_SHOT)
+	var on_exit: Callable = _unregister_navigation_geometry_by_id.bind(instance_id)
+	if not geometry_node.tree_exiting.is_connected(on_exit):
+		geometry_node.tree_exiting.connect(on_exit, CONNECT_ONE_SHOT)
 
 	if add_temporary_navigation_obstacle:
-		_ensure_navigation_obstacle(obstacle_node, avoidance_radius, avoidance_height)
+		_ensure_navigation_obstacle(geometry_node, avoidance_radius, avoidance_height)
 
 	return coords
 
-func unregister_dynamic_obstacle(obstacle_node: Node3D, remove_temporary_navigation_obstacle: bool = false) -> void:
-	if not is_instance_valid(obstacle_node):
+func unregister_navigation_geometry(geometry_node: Node3D, remove_temporary_navigation_obstacle: bool = true) -> void:
+	if not is_instance_valid(geometry_node):
 		return
 
-	unregister_dynamic_obstacle_by_id(obstacle_node.get_instance_id())
+	_unregister_navigation_geometry_by_id(geometry_node.get_instance_id())
 	if remove_temporary_navigation_obstacle:
-		var existing := obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D")
+		var existing: NavigationObstacle3D = geometry_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D
 		if existing != null:
+			existing.avoidance_enabled = false
 			existing.queue_free()
 
 ## Removal uses the registered bounds even if the obstacle has moved or freed.
 ## Remove its bake geometry before the scheduled parse (free/reparent/disable).
-func unregister_dynamic_obstacle_by_id(instance_id: int) -> void:
-	if not _obstacle_bounds.has(instance_id):
-		return
-	mark_world_bounds_dirty(_obstacle_bounds[instance_id])
-	_obstacle_bounds.erase(instance_id)
+func _unregister_navigation_geometry_by_id(instance_id: int) -> void:
+	if _dynamic_geometry_bounds.has(instance_id):
+		mark_world_bounds_dirty(_dynamic_geometry_bounds[instance_id])
+		_dynamic_geometry_bounds.erase(instance_id)
+	if _solid_blocker_bounds.has(instance_id):
+		mark_world_bounds_dirty(_solid_blocker_bounds[instance_id])
+		_solid_blocker_bounds.erase(instance_id)
 
 func get_obstacle_world_bounds(obstacle_node: Node3D, radius: float = -1.0, height: float = -1.0) -> AABB:
 	var bounds: Array[AABB] = []
@@ -242,6 +304,8 @@ func get_obstacle_world_bounds(obstacle_node: Node3D, radius: float = -1.0, heig
 		Vector3(resolved_radius * 2.0, resolved_height, resolved_radius * 2.0))
 
 func _collect_geometry_bounds(node: Node, bounds: Array[AABB]) -> void:
+	# TODO: Replace debug-mesh extraction with shape-specific bounds before
+	# large-scale destructible environments.
 	var shape_node: CollisionShape3D = node as CollisionShape3D
 	if shape_node != null and not shape_node.disabled and shape_node.shape != null:
 		bounds.append(shape_node.global_transform * shape_node.shape.get_debug_mesh().get_aabb())
@@ -258,6 +322,8 @@ func request_bake_dirty_chunks() -> void:
 func build_flat_chunk_navigation_meshes(y_offset: float = 0.0, overlap: float = -1.0) -> void:
 	if not _initialized:
 		initialize_chunks()
+	if not _initialized:
+		return
 
 	var resolved_overlap := flat_navigation_overlap if overlap < 0.0 else overlap
 	for data_variant in _chunks.values():
@@ -270,6 +336,8 @@ func build_flat_chunk_navigation_meshes(y_offset: float = 0.0, overlap: float = 
 func get_chunk_path(from_world_position: Vector3, to_world_position: Vector3) -> Array[Vector2i]:
 	if not _initialized:
 		initialize_chunks()
+	if not _initialized:
+		return []
 
 	var start := get_chunk_coords(from_world_position)
 	var goal := get_chunk_coords(to_world_position)
@@ -457,6 +525,10 @@ func _get_navigation_region_parent() -> Node:
 
 func _ensure_navigation_obstacle(obstacle_node: Node3D, avoidance_radius: float, avoidance_height: float) -> NavigationObstacle3D:
 	var navigation_obstacle: NavigationObstacle3D = obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	if navigation_obstacle != null and navigation_obstacle.is_queued_for_deletion():
+		# Allow unregister/register in the same frame without reusing a doomed helper.
+		obstacle_node.remove_child(navigation_obstacle)
+		navigation_obstacle = null
 	if navigation_obstacle == null:
 		navigation_obstacle = NavigationObstacle3D.new()
 		navigation_obstacle.name = "TemporaryNavigationObstacle3D"
@@ -512,15 +584,15 @@ func _process_dirty_bake_queue() -> void:
 	# sibling of regions, and all geometry is converted from root to region local.
 	NavigationServer3D.parse_source_geometry_data(mesh, source, root)
 	var local_source: NavigationMeshSourceGeometryData3D = _source_to_region_local(source, root.global_transform, data.region.global_transform)
-	_append_registered_obstructions(local_source, data.region.global_position, mesh.filter_baking_aabb)
+	_append_registered_solid_blockers(local_source, data.region.global_position, mesh.filter_baking_aabb)
 	var generation: int = _generation
 	_log("Bake start: %s (revision %d)" % [coords, data.baking_revision])
 	chunk_bake_requested.emit(coords, data.region)
 	NavigationServer3D.bake_from_source_geometry_data_async(mesh, local_source,
 		_finish_chunk_bake_request.bind(coords, generation, mesh))
 
-func _append_registered_obstructions(source: NavigationMeshSourceGeometryData3D, region_origin: Vector3, bake_bounds: AABB) -> void:
-	for world_bounds: AABB in _obstacle_bounds.values():
+func _append_registered_solid_blockers(source: NavigationMeshSourceGeometryData3D, region_origin: Vector3, bake_bounds: AABB) -> void:
+	for world_bounds: AABB in _solid_blocker_bounds.values():
 		var bounds: AABB = AABB(world_bounds.position - region_origin, world_bounds.size)
 		if not bounds.intersects(bake_bounds):
 			continue
@@ -585,7 +657,9 @@ func get_debug_snapshot() -> Dictionary:
 			"walkable": data.walkable, "dirty_revision": data.dirty_revision,
 			"baking_revision": data.baking_revision, "bake_request_count": data.bake_request_count,
 			"bake_finished_count": data.bake_finished_count})
-	return {"chunks": chunks, "queued_count": _dirty_queue.size(), "bake_active": _bake_active}
+	return {"chunks": chunks, "queued_count": _dirty_queue.size(), "bake_active": _bake_active,
+		"initialized": _initialized, "dynamic_geometry_count": _dynamic_geometry_bounds.size(),
+		"solid_blocker_count": _solid_blocker_bounds.size()}
 
 func _log(message: String) -> void:
 	if debug_logging:

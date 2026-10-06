@@ -3,6 +3,9 @@ class_name MoveState
 
 const ID = "MOVE_STATE"
 
+@export_range(0.0, 60.0, 0.1, "or_greater") var navigation_map_ready_timeout: float = 1.0
+@export_range(0.0, 60.0, 0.1, "or_greater") var navigation_path_ready_timeout: float = 1.0
+
 var _attack_move: bool
 var _chunked_navigation: ChunkedUnitNavigation = null
 var _target_set_physics_frame: int = 0
@@ -48,11 +51,11 @@ func _process_state(delta: float) -> void:
 	var agent: NavigationAgent3D = _unit.navigation_agent
 	_path_wait_seconds += delta
 	if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) == 0:
-		if _path_wait_seconds >= 1.0:
+		if _path_wait_seconds >= navigation_map_ready_timeout:
 			_fail_move_command()
 		return
 	if agent.get_current_navigation_path().is_empty():
-		if _path_wait_seconds >= 0.5:
+		if _path_wait_seconds >= navigation_path_ready_timeout:
 			_fail_move_command()
 		return
 	if not agent.is_target_reachable():

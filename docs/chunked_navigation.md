@@ -1,4 +1,4 @@
-# Chunked navigation (Godot 4.6)
+# Chunked navigation (Godot 4.6.2)
 
 Chunks own the spatial scope of NavigationMesh updates. NavigationAgent3D owns
 the final movement path through the connected NavigationServer3D map.
@@ -23,7 +23,8 @@ meshes and GPU reads. A NavigationMesh template can override geometry type,
 collision mask, agent dimensions and voxel settings. The root and region parent
 may be translated/yaw-rotated: parsed root-local vertices are transformed into
 region-local vertices before baking. Projected XZ obstructions require an
-upright source root.
+upright source root. Initialization warns about X/Z tilt or non-uniform scale;
+these warnings do not abort initialization.
 
 Each region has an identity global basis and world origin:
 
@@ -36,7 +37,12 @@ same convention; its `y_offset` is local to the region. It is for tests, not a
 replacement for runtime baking.
 
 Keep chunk dimensions multiples of the template's `cell_size`, and match the
-mesh `cell_size` / `cell_height` to the navigation map's voxel settings. Configure
+mesh `cell_size` / `cell_height` to the navigation map's voxel settings.
+Initialization validates both values against `NavigationServer3D.map_get_cell_size()`
+and `map_get_cell_height()`. A mismatch reports the mesh/map values and stops
+initialization without creating regions. The manager never overwrites shared
+map voxel settings. Chunk counts must be positive and chunk sizes finite and
+positive; invalid dimensions also abort initialization. Configure
 one chunk manager per World3D navigation map; its edge margin is a map-wide
 setting. The default edge connection margin is only 0.05m. Seam alignment comes
 from an expanded local bake AABB and an inward, voxel-aligned border, not from
@@ -53,28 +59,38 @@ marking the initial chunks dirty. Automatic baking is controlled by
 `bake_on_dirty`; `request_bake_dirty_chunks()` can start the pending queue
 explicitly.
 
-For a solid blocker, call `register_dynamic_obstacle(node)` after adding it to
-the scene. Put its collider/mesh under the source root so normal geometry parsing
-includes it. Registration stores the combined world AABB of its shapes/meshes;
-without geometry, explicit/default avoidance dimensions supply fallback bounds.
-These registered bounds also become conservative projected bake obstructions.
-This removes enclosed interior floor islands that closed collider surface
-rasterization can otherwise leave near chunk boundaries. Irregular geometry
-that should retain openings, such as arches, should use geometry parsing plus
-`mark_world_bounds_dirty()` rather than solid-blocker registration.
+Two registration APIs distinguish geometry changes from entirely blocked bounds:
 
-After moving/resizing a registered blocker, register it again. Both old and new
+- `register_dynamic_geometry(node)` tracks bounds and dirties affected chunks.
+  Actual shapes are parsed from the source root; registration adds no projected
+  AABB obstruction. Use it for irregular or partially destroyed objects with
+  openings that must remain walkable.
+- `register_solid_blocker(node)` also inserts a conservative projected AABB bake
+  obstruction. Use it only when the entire bounding box is unwalkable, such as
+  a simple box wall or closed container. It removes enclosed floor islands that
+  closed collider surface rasterization may leave near chunk boundaries.
+
+Put geometry under the configured source root so normal parsing includes it.
+Both APIs store combined world bounds of shapes/meshes; without geometry,
+explicit/default avoidance dimensions supply fallback bounds. Their registries
+are disjoint. Re-registering can change the role and removes the former role.
+
+After moving/resizing registered geometry, register it again. Both old and new
 bounds are dirtied and the existing avoidance helper is refreshed. Before
-removal, call `unregister_dynamic_obstacle(node, true)` and remove, reparent out
-of the source root, or disable its bake geometry before the next parse. Removal
-uses stored bounds, not the current center. `tree_exiting` also unregisters
-automatically; the instance-ID API supports a source whose node has already
-been freed.
+removal, call `unregister_navigation_geometry(node)` and remove, reparent out
+of the source root, or disable its bake geometry before the next parse. Unregister
+removes tracking, not the actual collider. It uses stored bounds, not the current
+center, and removes entries from either registry. `tree_exiting` also unregisters
+automatically by instance ID. Manual unregister followed by deletion is idempotent.
 
 The temporary NavigationObstacle3D is 2D avoidance on layers 3 (matching the
 base ground agent's mask). It does not supply bake geometry. The collider/source
 data and registered bounds supply that geometry independently. Explicit
-avoidance radius/height override its automatic bounds-based dimensions.
+avoidance radius/height override its automatic bounds-based dimensions. Both
+registration APIs accept `add_temporary_navigation_obstacle = false` to skip
+creating this helper. Unregister defaults to disabling avoidance immediately and
+queueing the helper for deletion. After unregister, a new registration creates
+a fresh helper, including when the old helper is still queued for deletion.
 
 ## Queue and synchronization
 
@@ -96,7 +112,11 @@ floor) with a bounded timeout. They do not assume two physics frames guarantee
 that the new polygons are queryable. Level and long-move tests also wait for a
 connected server path before issuing their single final target.
 
-MoveState allows physics frames for target/path updates, then cancels invalid,
+MoveState allows at least two physics frames for target/path updates; this does
+not guarantee navigation readiness. Its exported `navigation_map_ready_timeout`
+and `navigation_path_ready_timeout` both default to 1.0 seconds. An empty path
+waits until the configured timeout rather than the former 0.5 second cutoff.
+It cancels invalid,
 blocked, empty or unreachable paths and returns to Idle. Floor clicks may differ
 in height from agent centers; XZ reachability is checked with an agent-height
 vertical tolerance. Unit advances its path once per physics frame before the
@@ -104,7 +124,8 @@ finished check, and faces the next path point while moving. Attack-state aiming
 remains unchanged.
 
 `get_debug_snapshot()` reports coords, dirty/baking/walkable state, revisions,
-queue size, and request/completion counts. Enable `debug_logging` for state
+queue size, initialization status, request/completion counts, and separate
+`dynamic_geometry_count` / `solid_blocker_count` registry sizes. Enable `debug_logging` for state
 transition logs.
 
 ## Tests
@@ -123,10 +144,17 @@ region roots with different transforms, and actual base Unit scenes. It checks
 four-region traversal, positive-radius seams, avoidance on/off, floor-click
 height compatibility, blocker add/remove, boundary dirtying/rebakes, bake-time
 invalidation, automatic repathing during movement, and failed command recovery.
+It also verifies that parsed wall fragments leave a passage inside their combined
+AABB, and that an empty path waits beyond 0.5 seconds until a configured timeout.
+Manager tests cover matching/mismatched voxel settings, invalid dimensions,
+registration roles, projected obstruction policy, and temporary helper removal.
+Negative validation cases intentionally emit `[NAV]` errors; successful assertions
+and the final PASS/exit code distinguish these from unexpected failures.
 No runtime integration test uses manual chunk portals.
 
 Current limits: parsing scans the configured root per chunk and runs on the main
 thread; it has no spatial source cache. Initial baking and the queue are serial.
-Registered blockers use conservative AABBs, and movement remains ground XZ
+Solid blockers use conservative AABBs, bounds extraction still uses shape debug
+meshes, and movement remains ground XZ
 movement. Streaming, hierarchical pathfinding, destructive geometry, and Cover
 invalidation are not implemented here.
