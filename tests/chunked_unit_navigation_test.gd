@@ -13,6 +13,8 @@ func _ready() -> void:
 	_test_world_waypoints_use_chunk_transition_portals()
 	_test_world_waypoints_use_start_height()
 	_test_dynamic_obstacle_marks_chunk_and_adds_temporary_obstacle()
+	await _test_local_flat_meshes_and_reinitialization()
+	_test_obstacle_bounds_and_removal()
 
 	await get_tree().create_timer(0.1).timeout
 	if _failed:
@@ -101,9 +103,67 @@ func _test_dynamic_obstacle_marks_chunk_and_adds_temporary_obstacle() -> void:
 	_expect(coords == Vector2i(2, 3), "dynamic obstacle should report its chunk")
 	_expect(navigation.is_chunk_dirty(Vector2i(2, 3)), "dynamic obstacle should mark its chunk dirty")
 	_expect(obstacle.get_node_or_null("TemporaryNavigationObstacle3D") is NavigationObstacle3D, "dynamic obstacle should receive a temporary NavigationObstacle3D")
+	var temporary: NavigationObstacle3D = obstacle.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	_expect(not temporary.use_3d_avoidance and not temporary.affect_navigation_mesh, "temporary obstacle must use ground avoidance only")
 
 	obstacle.queue_free()
 	navigation.queue_free()
+
+func _test_local_flat_meshes_and_reinitialization() -> void:
+	var navigation: ChunkedUnitNavigation = _make_navigation() as ChunkedUnitNavigation
+	navigation.world_origin = Vector3(40.0, 3.0, -20.0)
+	navigation.initialize_chunks()
+	await get_tree().process_frame
+	_expect(navigation.get_children().size() == 25, "reinitialization must remove old regions")
+	navigation.build_flat_chunk_navigation_meshes(0.75)
+	var region: NavigationRegion3D = navigation.get_chunk_region(Vector2i(2, 3))
+	_expect(region.global_position == Vector3(60.0, 3.0, 10.0), "flat helper must preserve region world origin")
+	for vertex: Vector3 in region.navigation_mesh.vertices:
+		_expect(vertex.x >= 0.0 and vertex.x <= 10.0 and vertex.z >= 0.0 and vertex.z <= 10.0,
+			"flat mesh vertices must be region-local")
+		_expect(is_equal_approx(vertex.y, 0.75), "flat y_offset must be local")
+	navigation.set_chunk_walkable(Vector2i(2, 3), false)
+	_expect(not region.enabled and not navigation.is_world_position_navigable(region.global_position + Vector3.ONE),
+		"coarse blocked chunk must also disable its region")
+	navigation.queue_free()
+
+func _test_obstacle_bounds_and_removal() -> void:
+	var navigation: ChunkedUnitNavigation = _make_navigation() as ChunkedUnitNavigation
+	var obstacle: StaticBody3D = StaticBody3D.new()
+	add_child(obstacle)
+	obstacle.global_position = Vector3(10.0, 1.0, 15.0)
+	var collider: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(8.0, 2.0, 2.0)
+	collider.shape = shape
+	obstacle.add_child(collider)
+	navigation.register_dynamic_obstacle(obstacle, true)
+	var temporary: NavigationObstacle3D = obstacle.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	_expect(temporary.radius >= 4.0 and temporary.global_position == Vector3(10.0, 0.0, 15.0),
+		"default avoidance must cover a wide collider from its ground elevation")
+	_expect(navigation.is_chunk_dirty(Vector2i(0, 1)) and navigation.is_chunk_dirty(Vector2i(1, 1)),
+		"wide collider must dirty all overlapping chunks")
+	# Compare revision increments to prove removal uses OLD registered bounds,
+	# even after the object is moved into a completely different chunk.
+	var previous: int = _debug_chunk(navigation, Vector2i(0, 1)).dirty_revision
+	obstacle.global_position = Vector3(45.0, 1.0, 45.0)
+	navigation.unregister_dynamic_obstacle(obstacle)
+	_expect(_debug_chunk(navigation, Vector2i(0, 1)).dirty_revision == previous + 1,
+		"unregister must dirty stored bounds rather than the current center")
+	_expect(not navigation.is_chunk_dirty(Vector2i(4, 4)), "unregister alone must not dirty unrelated new position")
+	navigation.register_dynamic_obstacle(obstacle, true)
+	_expect(temporary.global_position == Vector3(45.0, 0.0, 45.0), "re-register must refresh the avoidance helper")
+	previous = _debug_chunk(navigation, Vector2i(4, 4)).dirty_revision
+	obstacle.free()
+	_expect(_debug_chunk(navigation, Vector2i(4, 4)).dirty_revision == previous + 1,
+		"source deletion must automatically dirty registered bounds")
+	navigation.queue_free()
+
+func _debug_chunk(navigation: ChunkedUnitNavigation, coords: Vector2i) -> Dictionary:
+	for chunk: Dictionary in navigation.get_debug_snapshot().chunks:
+		if chunk.coords == coords:
+			return chunk
+	return {}
 
 func _expect(condition: bool, message: String) -> void:
 	if condition:

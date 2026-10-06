@@ -6,12 +6,12 @@ const CHUNKS_PER_TILE := Vector2i(5, 5)
 const CHUNK_SIZE_METERS := 4.0
 const TILE_OVERLAP_METERS := 1.0
 const TILE_THICKNESS := 0.2
-const NAVIGATION_Y := 1.0
+const NAVIGATION_Y := 0.0
 
 @onready var _tiles_root: Node3D = $MapTiles
-@onready var _navigation: Variant = $ChunkedNavigation
+@onready var _navigation: ChunkedUnitNavigation = $ChunkedNavigation
 @onready var _camera: Variant = $Input/Camera
-@onready var _unit: Variant = $UnitsContainer/TestAIUnit
+@onready var _unit: Unit = $UnitsContainer/TestAIUnit
 
 func _ready() -> void:
 	_build_map_tiles()
@@ -42,11 +42,14 @@ func _configure_chunked_navigation() -> void:
 	_navigation.flat_navigation_overlap = 0.0
 	_navigation.use_region_edge_connections = true
 	_navigation.initialize_chunks()
-	_navigation.build_flat_chunk_navigation_meshes(NAVIGATION_Y, _navigation.flat_navigation_overlap, true)
-	NavigationServer3D.map_force_update(get_world_3d().navigation_map)
+	# This playable fixture uses real ground colliders, not synthetic flat meshes.
+	for z in range(_navigation.map_chunk_count.y):
+		for x in range(_navigation.map_chunk_count.x):
+			_navigation.mark_chunk_dirty(Vector2i(x, z))
+	_navigation.request_bake_dirty_chunks()
 
 func _configure_test_unit() -> void:
-	_unit.global_position = Vector3(0.0, 1.0, 0.0)
+	_unit.global_position = Vector3(0.0, 0.5, 0.0)
 	_unit.navigation_agent.avoidance_enabled = false
 	_unit.navigation_agent.target_position = _unit.global_position
 

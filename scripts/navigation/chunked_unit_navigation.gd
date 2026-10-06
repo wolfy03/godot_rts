@@ -18,9 +18,14 @@ const META_WAYPOINT_INDEX := &"chunked_unit_navigation_waypoint_index"
 @export var auto_create_regions: bool = true
 @export var bake_delay_seconds: float = 0.1
 @export var navigation_region_parent_path: NodePath
-@export var obstacle_parent_path: NodePath
+## Explicit root containing ground and static/dynamic bake geometry, not regions.
+@export var source_geometry_root_path: NodePath
 @export var navigation_mesh_template: NavigationMesh
 @export var bake_filter_height: float = 64.0
+@export var navigation_border_size: float = 0.5
+@export var edge_connection_margin: float = 0.05
+@export_flags_3d_navigation var obstacle_avoidance_layers: int = 3
+@export var debug_logging: bool = false
 @export var flat_navigation_overlap: float = 0.0
 @export var use_region_edge_connections: bool = true
 @export var use_start_height_for_path_waypoints: bool = true
@@ -36,6 +41,10 @@ class ChunkData:
 	var dirty: bool = false
 	var baking: bool = false
 	var walkable: bool = true
+	var dirty_revision: int = 0
+	var baking_revision: int = 0
+	var bake_request_count: int = 0
+	var bake_finished_count: int = 0
 
 	func _init(chunk_coords: Vector2i, chunk_bounds: Rect2) -> void:
 		coords = chunk_coords
@@ -46,6 +55,9 @@ var _astar: AStarGrid2D = AStarGrid2D.new()
 var _dirty_queue: Array[Vector2i] = []
 var _bake_timer: SceneTreeTimer
 var _initialized: bool = false
+var _bake_active: bool = false
+var _generation: int = 0
+var _obstacle_bounds: Dictionary[int, AABB] = {}
 
 func _ready() -> void:
 	add_to_group("chunked_unit_navigation")
@@ -53,9 +65,10 @@ func _ready() -> void:
 		initialize_chunks()
 
 func initialize_chunks() -> void:
-	_chunks.clear()
-	_dirty_queue.clear()
+	clear_chunks()
 	_configure_astar()
+	var navigation_map: RID = get_viewport().world_3d.navigation_map
+	NavigationServer3D.map_set_edge_connection_margin(navigation_map, edge_connection_margin)
 
 	for z in range(map_chunk_count.y):
 		for x in range(map_chunk_count.x):
@@ -68,9 +81,15 @@ func initialize_chunks() -> void:
 	_initialized = true
 
 func clear_chunks() -> void:
+	_generation += 1
+	for data: ChunkData in _chunks.values():
+		if is_instance_valid(data.region):
+			data.region.enabled = false
+			data.region.queue_free()
 	_chunks.clear()
 	_dirty_queue.clear()
 	_initialized = false
+	_bake_active = false
 
 func get_chunk_count() -> int:
 	return _chunks.size()
@@ -119,17 +138,27 @@ func set_chunk_walkable(coords: Vector2i, walkable: bool) -> void:
 
 	data.walkable = walkable
 	_astar.set_point_solid(coords, not walkable)
+	if is_instance_valid(data.region):
+		data.region.enabled = walkable
 	chunk_walkable_changed.emit(coords, walkable)
+
+## Coarse preflight only. The NavigationAgent verifies the actual polygon path.
+func is_world_position_navigable(world_position: Vector3) -> bool:
+	return world_position.is_finite() and is_chunk_walkable(get_chunk_coords(world_position))
 
 func mark_chunk_dirty(coords: Vector2i) -> void:
 	var data := _get_chunk_data(coords)
 	if data == null:
 		return
 
+	data.dirty_revision += 1
+	var was_dirty: bool = data.dirty
 	data.dirty = true
-	if not _dirty_queue.has(coords):
+	if not data.baking and not _dirty_queue.has(coords):
 		_dirty_queue.append(coords)
-	chunk_dirty_changed.emit(coords, true)
+	if not was_dirty:
+		chunk_dirty_changed.emit(coords, true)
+		_log("Dirty chunk: %s (revision %d)" % [coords, data.dirty_revision])
 
 	if bake_on_dirty:
 		_schedule_dirty_bake()
@@ -138,9 +167,15 @@ func mark_chunk_dirty_for_world_position(world_position: Vector3) -> void:
 	mark_chunk_dirty(get_chunk_coords(world_position))
 
 func mark_chunks_dirty_for_bounds(world_bounds: AABB) -> void:
-	var min_coords := get_chunk_coords(world_bounds.position)
-	var max_position := world_bounds.position + world_bounds.size
-	var max_coords := get_chunk_coords(max_position)
+	mark_world_bounds_dirty(world_bounds)
+
+## Geometry changes affect neighboring bake halos as well as the touched chunk.
+func mark_world_bounds_dirty(world_bounds: AABB) -> void:
+	var halo: float = _get_bake_border(_new_navigation_mesh())
+	var min_coords: Vector2i = get_chunk_coords(world_bounds.position - Vector3(halo, 0.0, halo))
+	var max_coords: Vector2i = get_chunk_coords(world_bounds.end + Vector3(halo, 0.0, halo))
+	min_coords = min_coords.max(Vector2i.ZERO)
+	max_coords = max_coords.min(map_chunk_count - Vector2i.ONE)
 
 	for z in range(min_coords.y, max_coords.y + 1):
 		for x in range(min_coords.x, max_coords.x + 1):
@@ -152,11 +187,23 @@ func register_dynamic_obstacle(
 	avoidance_radius: float = -1.0,
 	avoidance_height: float = -1.0
 ) -> Vector2i:
-	if obstacle_node == null:
+	if not is_instance_valid(obstacle_node):
 		return Vector2i(-1, -1)
 
 	var coords := get_chunk_coords(obstacle_node.global_position)
-	mark_chunk_dirty(coords)
+	var instance_id: int = obstacle_node.get_instance_id()
+	if _obstacle_bounds.has(instance_id):
+		mark_world_bounds_dirty(_obstacle_bounds[instance_id])
+	# Registered obstacles are solid blockers: their conservative world AABB
+	# also supplies a projected bake obstruction. Parsing closed collider surfaces
+	# alone can leave disconnected interior floor islands at chunk boundaries.
+	# For geometry-only changes (e.g. arches), use mark_world_bounds_dirty instead.
+	var bounds: AABB = get_obstacle_world_bounds(obstacle_node, avoidance_radius, avoidance_height)
+	_obstacle_bounds[instance_id] = bounds
+	mark_world_bounds_dirty(bounds)
+	var on_exit: Callable = unregister_dynamic_obstacle_by_id.bind(instance_id)
+	if not obstacle_node.tree_exiting.is_connected(on_exit):
+		obstacle_node.tree_exiting.connect(on_exit, CONNECT_ONE_SHOT)
 
 	if add_temporary_navigation_obstacle:
 		_ensure_navigation_obstacle(obstacle_node, avoidance_radius, avoidance_height)
@@ -164,19 +211,51 @@ func register_dynamic_obstacle(
 	return coords
 
 func unregister_dynamic_obstacle(obstacle_node: Node3D, remove_temporary_navigation_obstacle: bool = false) -> void:
-	if obstacle_node == null:
+	if not is_instance_valid(obstacle_node):
 		return
 
-	mark_chunk_dirty_for_world_position(obstacle_node.global_position)
+	unregister_dynamic_obstacle_by_id(obstacle_node.get_instance_id())
 	if remove_temporary_navigation_obstacle:
 		var existing := obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D")
 		if existing != null:
 			existing.queue_free()
 
+## Removal uses the registered bounds even if the obstacle has moved or freed.
+## Remove its bake geometry before the scheduled parse (free/reparent/disable).
+func unregister_dynamic_obstacle_by_id(instance_id: int) -> void:
+	if not _obstacle_bounds.has(instance_id):
+		return
+	mark_world_bounds_dirty(_obstacle_bounds[instance_id])
+	_obstacle_bounds.erase(instance_id)
+
+func get_obstacle_world_bounds(obstacle_node: Node3D, radius: float = -1.0, height: float = -1.0) -> AABB:
+	var bounds: Array[AABB] = []
+	_collect_geometry_bounds(obstacle_node, bounds)
+	if not bounds.is_empty():
+		var combined: AABB = bounds[0]
+		for index in range(1, bounds.size()):
+			combined = combined.merge(bounds[index])
+		return combined
+	var resolved_radius: float = default_obstacle_radius if radius < 0.0 else radius
+	var resolved_height: float = default_obstacle_height if height < 0.0 else height
+	return AABB(obstacle_node.global_position - Vector3(resolved_radius, 0.0, resolved_radius),
+		Vector3(resolved_radius * 2.0, resolved_height, resolved_radius * 2.0))
+
+func _collect_geometry_bounds(node: Node, bounds: Array[AABB]) -> void:
+	var shape_node: CollisionShape3D = node as CollisionShape3D
+	if shape_node != null and not shape_node.disabled and shape_node.shape != null:
+		bounds.append(shape_node.global_transform * shape_node.shape.get_debug_mesh().get_aabb())
+	var mesh_node: MeshInstance3D = node as MeshInstance3D
+	if mesh_node != null and mesh_node.mesh != null:
+		bounds.append(mesh_node.global_transform * mesh_node.mesh.get_aabb())
+	for child: Node in node.get_children():
+		_collect_geometry_bounds(child, bounds)
+
 func request_bake_dirty_chunks() -> void:
 	_schedule_dirty_bake()
 
-func build_flat_chunk_navigation_meshes(y_offset: float = 0.0, overlap: float = -1.0, use_world_space_vertices: bool = false) -> void:
+## Test/helper meshes only. y_offset and vertices are always region-local.
+func build_flat_chunk_navigation_meshes(y_offset: float = 0.0, overlap: float = -1.0) -> void:
 	if not _initialized:
 		initialize_chunks()
 
@@ -185,12 +264,9 @@ func build_flat_chunk_navigation_meshes(y_offset: float = 0.0, overlap: float = 
 		var data := data_variant as ChunkData
 		if data == null or data.region == null:
 			continue
-		var mesh_origin := Vector2.ZERO
-		if use_world_space_vertices:
-			data.region.global_position = Vector3.ZERO
-			mesh_origin = data.bounds.position
-		data.region.navigation_mesh = _create_flat_chunk_navigation_mesh(y_offset, resolved_overlap, mesh_origin)
+		data.region.navigation_mesh = _create_flat_chunk_navigation_mesh(y_offset, resolved_overlap)
 
+## Coarse strategic helper, not the primary NavigationAgent movement path.
 func get_chunk_path(from_world_position: Vector3, to_world_position: Vector3) -> Array[Vector2i]:
 	if not _initialized:
 		initialize_chunks()
@@ -208,6 +284,7 @@ func get_chunk_path(from_world_position: Vector3, to_world_position: Vector3) ->
 		path.append(raw_coords as Vector2i)
 	return path
 
+## Optional strategic/debug waypoints. MoveState never follows these portals.
 func get_world_path_waypoints(from_world_position: Vector3, to_world_position: Vector3) -> Array[Vector3]:
 	var chunk_path := get_chunk_path(from_world_position, to_world_position)
 	var waypoints: Array[Vector3] = []
@@ -228,6 +305,7 @@ func get_world_path_waypoints(from_world_position: Vector3, to_world_position: V
 
 	return waypoints
 
+## Legacy opt-in helper only; ordinary movement passes a final target directly.
 func assign_agent_path(
 	agent: NavigationAgent3D,
 	from_world_position: Vector3,
@@ -308,56 +386,61 @@ func _create_navigation_region(coords: Vector2i) -> NavigationRegion3D:
 	var region := NavigationRegion3D.new()
 	region.name = "NavigationRegion3D_%d_%d" % [coords.x, coords.y]
 
-	var mesh: NavigationMesh
-	if navigation_mesh_template != null:
-		mesh = navigation_mesh_template.duplicate(true)
-	else:
-		mesh = NavigationMesh.new()
-
+	var mesh: NavigationMesh = _new_navigation_mesh()
 	_configure_chunk_navigation_mesh(mesh)
-	if _object_has_property(region, "use_edge_connections"):
-		region.set("use_edge_connections", use_region_edge_connections)
+	region.use_edge_connections = use_region_edge_connections
 
 	_get_navigation_region_parent().add_child(region)
-	region.global_position = Vector3(
+	region.global_transform = Transform3D(Basis.IDENTITY, Vector3(
 		world_origin.x + float(coords.x) * chunk_size.x,
 		world_origin.y,
 		world_origin.z + float(coords.y) * chunk_size.y
-	)
+	))
 	region.navigation_mesh = mesh
 	return region
 
 func _configure_chunk_navigation_mesh(mesh: NavigationMesh) -> void:
-	if mesh == null:
-		return
+	var border: float = _get_bake_border(mesh)
+	var height: float = maxf(bake_filter_height, 1.0)
+	# border_size trims INSIDE the bake AABB. Include a voxel-aligned neighbor
+	# halo, then trim it, leaving exactly [0, chunk_size] without radius seams.
+	mesh.border_size = border
+	mesh.filter_baking_aabb = AABB(Vector3(-border, -height * 0.5, -border),
+		Vector3(chunk_size.x + border * 2.0, height, chunk_size.y + border * 2.0))
+	mesh.filter_baking_aabb_offset = Vector3.ZERO
+	mesh.edge_max_error = minf(mesh.edge_max_error, 1.0)
+	mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN
 
-	if _object_has_property(mesh, "filter_baking_aabb"):
-		var height := maxf(bake_filter_height, 1.0)
-		var filter := AABB(
-			Vector3(0.0, -height * 0.5, 0.0),
-			Vector3(chunk_size.x, height, chunk_size.y)
-		)
-		mesh.set("filter_baking_aabb", filter)
+func _get_bake_border(mesh: NavigationMesh) -> float:
+	# Ledge filtering consumes an additional raster cell before radius erosion.
+	var clearance: float = mesh.agent_radius + (mesh.cell_size if mesh.filter_ledge_spans else 0.0)
+	return ceilf(maxf(clearance, navigation_border_size) / mesh.cell_size) * mesh.cell_size
 
-	if _object_has_property(mesh, "filter_baking_aabb_offset"):
-		mesh.set("filter_baking_aabb_offset", Vector3.ZERO)
-
-func _create_flat_chunk_navigation_mesh(y_offset: float, overlap: float, mesh_origin: Vector2 = Vector2.ZERO) -> NavigationMesh:
-	var mesh := NavigationMesh.new()
+func _new_navigation_mesh() -> NavigationMesh:
 	if navigation_mesh_template != null:
-		mesh = navigation_mesh_template.duplicate(true)
-	else:
-		mesh.agent_height = 1.0
-		mesh.agent_radius = 0.45
+		return navigation_mesh_template.duplicate(true) as NavigationMesh
+	var mesh: NavigationMesh = NavigationMesh.new()
+	mesh.agent_height = 1.0
+	# Conservative voxel-aligned clearance for the ground unit's 0.45m radius.
+	mesh.agent_radius = 0.5
+	mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	mesh.geometry_collision_mask = 1
+	mesh.region_min_size = 0.0
+	mesh.filter_ledge_spans = true
+	mesh.filter_walkable_low_height_spans = true
+	return mesh
+
+func _create_flat_chunk_navigation_mesh(y_offset: float, overlap: float) -> NavigationMesh:
+	var mesh: NavigationMesh = _new_navigation_mesh()
 
 	var max_negative_overlap := -minf(chunk_size.x, chunk_size.y) * 0.9
 	var resolved_overlap := maxf(overlap, max_negative_overlap)
 	var half_overlap := resolved_overlap * 0.5
 	mesh.vertices = PackedVector3Array([
-		Vector3(mesh_origin.x - half_overlap, y_offset, mesh_origin.y - half_overlap),
-		Vector3(mesh_origin.x - half_overlap, y_offset, mesh_origin.y + chunk_size.y + half_overlap),
-		Vector3(mesh_origin.x + chunk_size.x + half_overlap, y_offset, mesh_origin.y + chunk_size.y + half_overlap),
-		Vector3(mesh_origin.x + chunk_size.x + half_overlap, y_offset, mesh_origin.y - half_overlap),
+		Vector3(-half_overlap, y_offset, -half_overlap),
+		Vector3(-half_overlap, y_offset, chunk_size.y + half_overlap),
+		Vector3(chunk_size.x + half_overlap, y_offset, chunk_size.y + half_overlap),
+		Vector3(chunk_size.x + half_overlap, y_offset, -half_overlap),
 	])
 	mesh.clear_polygons()
 	mesh.add_polygon(PackedInt32Array([0, 1, 2]))
@@ -372,39 +455,28 @@ func _get_navigation_region_parent() -> Node:
 			return parent
 	return self
 
-func _get_obstacle_parent() -> Node:
-	if obstacle_parent_path != NodePath():
-		var parent := get_node_or_null(obstacle_parent_path)
-		if parent != null:
-			return parent
-	return self
-
 func _ensure_navigation_obstacle(obstacle_node: Node3D, avoidance_radius: float, avoidance_height: float) -> NavigationObstacle3D:
-	var existing := obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D")
-	if existing is NavigationObstacle3D:
-		return existing as NavigationObstacle3D
-
-	var navigation_obstacle := NavigationObstacle3D.new()
-	navigation_obstacle.name = "TemporaryNavigationObstacle3D"
-	navigation_obstacle.set("avoidance_enabled", true)
-	navigation_obstacle.set("radius", default_obstacle_radius if avoidance_radius < 0.0 else avoidance_radius)
-	navigation_obstacle.set("height", default_obstacle_height if avoidance_height < 0.0 else avoidance_height)
-	navigation_obstacle.set("use_3d_avoidance", true)
-	obstacle_node.add_child(navigation_obstacle)
+	var navigation_obstacle: NavigationObstacle3D = obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	if navigation_obstacle == null:
+		navigation_obstacle = NavigationObstacle3D.new()
+		navigation_obstacle.name = "TemporaryNavigationObstacle3D"
+		obstacle_node.add_child(navigation_obstacle)
+	var bounds: AABB = get_obstacle_world_bounds(obstacle_node, avoidance_radius, avoidance_height)
+	# Immediate ground avoidance only. Collider/mesh geometry supplies the bake.
+	# Refresh existing helpers as well when a moving/resized blocker re-registers.
+	navigation_obstacle.avoidance_enabled = true
+	navigation_obstacle.radius = maxf(default_obstacle_radius, Vector2(bounds.size.x, bounds.size.z).length() * 0.5) if avoidance_radius < 0.0 else avoidance_radius
+	navigation_obstacle.height = maxf(default_obstacle_height, bounds.size.y) if avoidance_height < 0.0 else avoidance_height
+	navigation_obstacle.use_3d_avoidance = false
+	navigation_obstacle.avoidance_layers = obstacle_avoidance_layers
+	navigation_obstacle.affect_navigation_mesh = false
+	navigation_obstacle.global_position = Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
 	return navigation_obstacle
-
-func _object_has_property(object: Object, property_name: String) -> bool:
-	var properties: Array = object.get_property_list()
-	for property_data in properties:
-		var current_name := String(property_data.get("name", ""))
-		if current_name == property_name:
-			return true
-	return false
 
 func _schedule_dirty_bake() -> void:
 	if not is_inside_tree():
 		return
-	if _bake_timer != null:
+	if _bake_timer != null or _bake_active:
 		return
 
 	var delay := maxf(bake_delay_seconds, 0.0)
@@ -413,46 +485,111 @@ func _schedule_dirty_bake() -> void:
 
 func _process_dirty_bake_queue() -> void:
 	_bake_timer = null
-	if _dirty_queue.is_empty():
+	if _dirty_queue.is_empty() or _bake_active:
 		return
+	var root: Node3D = get_node_or_null(source_geometry_root_path) as Node3D if source_geometry_root_path != NodePath() else null
+	if root == null:
+		push_warning("[NAV] Set source_geometry_root_path before requesting runtime bake.")
+		return # Keep dirty work for retry after configuration is fixed.
 
 	var coords := _dirty_queue.pop_front() as Vector2i
 	var data := _get_chunk_data(coords)
 	if data == null:
 		_process_dirty_bake_queue()
 		return
-	if data.region == null:
-		data.dirty = false
-		chunk_dirty_changed.emit(coords, false)
+	if not is_instance_valid(data.region):
 		_process_dirty_bake_queue()
 		return
 
+	_bake_active = true
 	data.baking = true
+	data.baking_revision = data.dirty_revision
+	data.bake_request_count += 1
+	var mesh: NavigationMesh = _new_navigation_mesh()
+	_configure_chunk_navigation_mesh(mesh)
+	var source: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
+	# SceneTree parsing stays on the main thread. The configured root can be a
+	# sibling of regions, and all geometry is converted from root to region local.
+	NavigationServer3D.parse_source_geometry_data(mesh, source, root)
+	var local_source: NavigationMeshSourceGeometryData3D = _source_to_region_local(source, root.global_transform, data.region.global_transform)
+	_append_registered_obstructions(local_source, data.region.global_position, mesh.filter_baking_aabb)
+	var generation: int = _generation
+	_log("Bake start: %s (revision %d)" % [coords, data.baking_revision])
 	chunk_bake_requested.emit(coords, data.region)
+	NavigationServer3D.bake_from_source_geometry_data_async(mesh, local_source,
+		_finish_chunk_bake_request.bind(coords, generation, mesh))
 
-	if data.region.has_method("bake_navigation_mesh"):
-		if data.region.has_signal("bake_finished"):
-			var on_bake_finished: Callable = func() -> void:
-				_finish_chunk_bake_request(coords)
-			data.region.bake_finished.connect(on_bake_finished, CONNECT_ONE_SHOT)
-		else:
-			call_deferred("_finish_chunk_bake_request", coords)
-		data.region.call_deferred("bake_navigation_mesh", true)
-	else:
-		call_deferred("_finish_chunk_bake_request", coords)
+func _append_registered_obstructions(source: NavigationMeshSourceGeometryData3D, region_origin: Vector3, bake_bounds: AABB) -> void:
+	for world_bounds: AABB in _obstacle_bounds.values():
+		var bounds: AABB = AABB(world_bounds.position - region_origin, world_bounds.size)
+		if not bounds.intersects(bake_bounds):
+			continue
+		var start: Vector3 = bounds.position
+		var end: Vector3 = bounds.end
+		source.add_projected_obstruction(PackedVector3Array([
+			Vector3(start.x, 0.0, start.z), Vector3(start.x, 0.0, end.z),
+			Vector3(end.x, 0.0, end.z), Vector3(end.x, 0.0, start.z),
+		]), start.y, bounds.size.y, false) # false retains agent-radius clearance.
 
-func _finish_chunk_bake_request(coords: Vector2i) -> void:
+func _source_to_region_local(source: NavigationMeshSourceGeometryData3D, root_transform: Transform3D, region_transform: Transform3D) -> NavigationMeshSourceGeometryData3D:
+	var result: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
+	var transform: Transform3D = region_transform.affine_inverse() * root_transform
+	var vertices: PackedFloat32Array = source.get_vertices()
+	for index in range(0, vertices.size(), 3):
+		var vertex: Vector3 = transform * Vector3(vertices[index], vertices[index + 1], vertices[index + 2])
+		vertices[index] = vertex.x
+		vertices[index + 1] = vertex.y
+		vertices[index + 2] = vertex.z
+	result.set_vertices(vertices)
+	result.set_indices(source.get_indices())
+	# Support projected XZ obstructions from level geometry as well. Ground
+	# source roots should not tilt their up axis (same restriction as avoidance).
+	for obstruction: Dictionary in source.get_projected_obstructions():
+		var outline: PackedFloat32Array = obstruction.vertices
+		var points: PackedVector3Array = PackedVector3Array()
+		for index in range(0, outline.size(), 3):
+			points.append(transform * Vector3(outline[index], obstruction.elevation, outline[index + 2]))
+		var elevation: float = (transform * Vector3(0.0, obstruction.elevation, 0.0)).y
+		result.add_projected_obstruction(points, elevation,
+			absf((transform.basis * Vector3.UP * float(obstruction.height)).y), obstruction.carve)
+	return result
+
+func _finish_chunk_bake_request(coords: Vector2i, generation: int, mesh: NavigationMesh) -> void:
+	if generation != _generation:
+		return # Ignore completions from cleared/reinitialized chunk sets.
 	var data := _get_chunk_data(coords)
 	if data == null:
 		return
 
+	if is_instance_valid(data.region):
+		data.region.navigation_mesh = mesh
 	data.baking = false
-	data.dirty = false
-	chunk_dirty_changed.emit(coords, false)
+	_bake_active = false
+	data.bake_finished_count += 1
+	data.dirty = data.dirty_revision != data.baking_revision
+	if data.dirty:
+		if not _dirty_queue.has(coords):
+			_dirty_queue.append(coords)
+	else:
+		chunk_dirty_changed.emit(coords, false)
+	_log("Bake finished: %s (dirty %s)" % [coords, data.dirty])
 	chunk_bake_finished.emit(coords, data.region)
 
 	if not _dirty_queue.is_empty():
 		_schedule_dirty_bake()
+
+func get_debug_snapshot() -> Dictionary:
+	var chunks: Array[Dictionary] = []
+	for data: ChunkData in _chunks.values():
+		chunks.append({"coords": data.coords, "dirty": data.dirty, "baking": data.baking,
+			"walkable": data.walkable, "dirty_revision": data.dirty_revision,
+			"baking_revision": data.baking_revision, "bake_request_count": data.bake_request_count,
+			"bake_finished_count": data.bake_finished_count})
+	return {"chunks": chunks, "queued_count": _dirty_queue.size(), "bake_active": _bake_active}
+
+func _log(message: String) -> void:
+	if debug_logging:
+		print("[NAV] " + message)
 
 func _get_chunk_data(coords: Vector2i) -> ChunkData:
 	if not is_chunk_coords_valid(coords):

@@ -12,13 +12,35 @@ func _ready() -> void:
 
 	var unit := level.get_node("UnitsContainer/TestAIUnit") as Unit
 	var navigation := level.get_node("ChunkedNavigation") as ChunkedUnitNavigation
+	var bake_ready: bool = false
+	for frame in range(2400):
+		await get_tree().physics_frame
+		var snapshot: Dictionary = navigation.get_debug_snapshot()
+		if snapshot.queued_count == 0 and not snapshot.bake_active:
+			bake_ready = true
+			break
+	if not bake_ready:
+		push_error("long move must wait for real level bake")
+		get_tree().quit(1)
+		return
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	var start_position := unit.global_position
 	var start_chunk := navigation.get_chunk_coords(start_position)
-	var waypoints := navigation.assign_agent_path(unit.navigation_agent, unit.global_position, Vector3(20.0, 0.0, 20.0))
-	if waypoints.size() <= 1:
+	var target: Vector3 = Vector3(20.0, unit.global_position.y, 20.0)
+	unit.navigation_agent.target_desired_distance = 0.5
+	unit.navigation_agent.target_position = target
+	var visited: Array[Vector2i] = []
+	for frame in range(900):
+		await get_tree().physics_frame
+		var coords: Vector2i = navigation.get_chunk_coords(unit.global_position)
+		if not visited.has(coords):
+			visited.append(coords)
+		if Vector2(unit.global_position.x, unit.global_position.z).distance_to(Vector2(20.0, 20.0)) < 0.6:
+			break
+	if visited.size() < 5 or Vector2(unit.global_position.x, unit.global_position.z).distance_to(Vector2(20.0, 20.0)) >= 0.6:
 		_failed = true
-		push_error("long move should use multiple chunk transition waypoints")
-	await get_tree().create_timer(5.0).timeout
+		push_error("single-target long move must cross multiple regions and arrive, visited=%s final_position=%s" % [visited, unit.global_position])
 
 	var moved_distance := unit.global_position.distance_to(start_position)
 	var final_chunk := navigation.get_chunk_coords(unit.global_position)

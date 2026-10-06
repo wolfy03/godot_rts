@@ -1522,6 +1522,9 @@ func _physics_process(_delta: float) -> void:
 		move_and_slide()
 		return
 
+	# Advance/recompute before checking finished, including after map rebakes.
+	# Keep this as the single per-physics path update for the movement agent.
+	var next_path_pos: Vector3 = navigation_agent.get_next_path_position()
 	if navigation_agent.is_navigation_finished():
 		velocity = Vector3.ZERO
 		if navigation_agent:
@@ -1529,7 +1532,6 @@ func _physics_process(_delta: float) -> void:
 		move_and_slide()
 		return
 
-	var next_path_pos: Vector3 = navigation_agent.get_next_path_position()
 	var new_velocity: Vector3 = next_path_pos - global_position
 	new_velocity.y = 0
 	new_velocity = new_velocity.normalized() * navigation_agent.max_speed
@@ -1539,7 +1541,7 @@ func _physics_process(_delta: float) -> void:
 		velocity = new_velocity
 		move_and_slide()
 
-	_look_at_ground_position(navigation_agent.target_position)
+	_look_at_ground_position(next_path_pos)
 
 func _look_at_ground_position(target_position: Vector3) -> void:
 	var look_target = Vector3(target_position.x, global_position.y, target_position.z)

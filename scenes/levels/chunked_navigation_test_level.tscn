@@ -18,7 +18,8 @@ script = ExtResource("1_level")
 script = ExtResource("2_navigation")
 auto_initialize = false
 navigation_region_parent_path = NodePath("../NavigationRegions")
-bake_on_dirty = false
+source_geometry_root_path = NodePath("../MapTiles")
+bake_delay_seconds = 0.0
 
 [node name="UnitsContainer" type="Node3D" parent="." unique_id=738280260]
 
