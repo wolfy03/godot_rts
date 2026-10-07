@@ -42,6 +42,10 @@ func request_decision(allow_move_interrupt: bool = false) -> bool:
 		return false
 
 	var current_state_id := _unit.state_machine.get_current_state_id()
+	# Preserve the selected reservation until arrival. Once occupied, cover's
+	# arrival callback may resume combat/healing/skill decisions normally.
+	if current_state_id == STATE_TAKE_COVER and _unit.reserved_cover != null and _unit.current_cover == null:
+		return false
 	if current_state_id == STATE_HOLD_POSITION:
 		return false
 	if current_state_id == STATE_HEAL:
@@ -110,7 +114,7 @@ func _get_cover_against(target: Unit) -> CoverCandidate:
 	if debug_cover_evaluation:
 		print("[COVER] valid=%s score=%.3f exposure=%.3f improvement=%.3f reason=%s"
 			% [result.valid, result.final_score, result.exposure_score, result.protection_improvement, result.reason])
-	return result.candidate if result.valid and result.protected_from_threat and result.improves_current_position else null
+	return result.candidate if result.valid else null
 
 func _get_cover_navigation_context() -> ChunkedUnitNavigation:
 	for node: Node in _unit.get_tree().get_nodes_in_group("chunked_unit_navigation"):

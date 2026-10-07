@@ -13,9 +13,12 @@ func _ready() -> void:
 	_threat = _make_unit(Vector3(0.0, 1.0, 8.0), true)
 	await _sync_physics()
 	await _test_geometry_scores()
+	await _test_improvement_aware_selection()
 	_test_virtual_points_and_side_effects()
 	await _test_invalid_and_reserved_candidates()
 	await _test_ai_threat_and_exact_reservation()
+	await _test_take_cover_interruption_and_arrival()
+	await _test_candidate_position_stuck()
 	print("cover_evaluator_test: %s" % ["FAIL" if _failed else "PASS"])
 	get_tree().quit(1 if _failed else 0)
 
@@ -63,6 +66,43 @@ func _test_geometry_scores() -> void:
 	cover.free()
 	await _sync_physics()
 	print("cover evaluator / open, full, partial, outgoing fire, scoring: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_improvement_aware_selection() -> void:
+	var original_position: Vector3 = _unit.global_position
+	_unit.global_position = Vector3(-0.6, 1.0, -1.0)
+	var partial_cover: Cover = _make_cover(Vector3.ZERO, 1.6, [Vector3(0.6, 1.0, -1.0)])
+	var full_cover: Cover = _make_cover(Vector3(5.0, 0.0, -3.0), 4.0, [Vector3(0.0, 1.0, -1.0)])
+	await _sync_physics()
+	var nearby: CoverCandidate = partial_cover.get_cover_candidates()[0]
+	var improving: CoverCandidate = full_cover.get_cover_candidates()[0]
+	var high_score: CoverEvaluationResult = _evaluator.evaluate(_unit, nearby, _threat)
+	var lower_score: CoverEvaluationResult = _evaluator.evaluate(_unit, improving, _threat)
+	_expect(high_score.valid and high_score.protected_from_threat and high_score.can_fire_at_threat
+		and not high_score.improves_current_position, "nearby partial cover must be usable but provide no protection gain")
+	_expect(lower_score.valid and lower_score.improves_current_position and high_score.score > lower_score.score,
+		"fixture must give the non-improving candidate a higher score than the improving candidate")
+	_expect(is_equal_approx(high_score.current_exposure_score, lower_score.current_exposure_score)
+		and is_equal_approx(high_score.protection_improvement, 0.0), "standalone evaluations must retain their current-position baseline")
+	var best: CoverEvaluationResult = _evaluator.find_best_candidate(_unit, [nearby, improving], _threat)
+	_expect(best.valid and best.candidate == improving and best.improves_current_position,
+		"best selection must not lose an improving candidate behind a higher non-improving score")
+	_expect(is_equal_approx(best.current_exposure_score, lower_score.current_exposure_score)
+		and is_equal_approx(best.protection_improvement, lower_score.protection_improvement),
+		"batch selection must apply the same baseline as standalone evaluation")
+	var none: CoverEvaluationResult = _evaluator.find_best_candidate(_unit, [nearby], _threat)
+	_expect(not none.valid and none.candidate == null and none.reason == &"no_improving_candidate",
+		"valid but non-improving candidates must report no_improving_candidate")
+	nearby.valid = false
+	_expect(_evaluator.find_best_candidate(_unit, [nearby], _threat).reason == &"no_valid_candidate",
+		"all invalid candidates must still report no_valid_candidate")
+	_expect(not _evaluator.find_best_candidate(null, [improving], _threat).valid
+		and not _evaluator.find_best_candidate(_unit, [improving], null).valid,
+		"batch baseline must not dereference an invalid Unit or threat")
+	partial_cover.free()
+	full_cover.free()
+	_unit.global_position = original_position
+	await _sync_physics()
+	print("cover evaluator / improvement-aware selection: %s" % ["FAIL" if _failed else "PASS"])
 
 func _test_virtual_points_and_side_effects() -> void:
 	_unit.rotation.y = 0.65
@@ -189,6 +229,86 @@ func _test_ai_threat_and_exact_reservation() -> void:
 	opposite.free()
 	await _sync_physics()
 	print("cover evaluator / threat-based AI and exact reservation: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_take_cover_interruption_and_arrival() -> void:
+	var unit: Unit = _make_unit(Vector3(-4.0, 1.0, -1.0))
+	var cover: Cover = _make_cover(Vector3.ZERO, 4.0, [Vector3(0.0, 1.0, -1.0)])
+	# Keep real detection/attack areas but isolate state changes from skill effects.
+	unit._skills.clear()
+	# Disabled processing freezes movement/states, but must not remove these
+	# collision objects from the physics space used by real Area3D detection.
+	var threat_disable_mode: int = _threat.disable_mode
+	_threat.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	unit.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	unit.enemy_detection_area.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	unit.attack_range_area.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	await _sync_physics()
+	unit.clear_player_command()
+	_expect(unit.get_nearest_detected_enemy() == _threat and unit.get_nearest_attackable_unit_in_range() == _threat,
+		"interruption fixture must offer a real detected, attackable threat")
+	_expect(unit.ai_brain.request_decision() and unit.state_machine.is_current_state(TakeCoverState.ID),
+		"AI must select and enter TakeCover before interruption checks")
+	var slot: Marker3D = unit.reserved_cover_slot
+	_expect(slot != null and unit.reserved_cover == cover and unit.current_cover == null,
+		"cover command must still be travelling toward its reserved slot")
+	for index in 6:
+		_expect(not unit.ai_brain.request_decision(index % 2 == 0),
+			"repeated decisions must defer all autonomous actions during cover travel")
+		_expect(unit.state_machine.is_current_state(TakeCoverState.ID) and unit.reserved_cover == cover
+			and unit.reserved_cover_slot == slot and unit.current_cover == null,
+			"decision ticks must preserve TakeCover and its exact reservation")
+	if slot != null:
+		unit.global_position = slot.global_position
+		await _sync_physics()
+		var take_cover: TakeCoverState = unit.state_machine.get_node("TakeCoverState") as TakeCoverState
+		take_cover._process_state(0.0)
+		_expect(unit.current_cover == cover and unit.state_machine.is_current_state(AttackState.ID),
+			"arrival must occupy cover and allow its AI callback to transition to Attack")
+		var attack: AttackState = unit.state_machine.get_node("AttackState") as AttackState
+		_expect(attack._attack_target == _threat, "resumed AI must attack the actual detected threat")
+	unit.begin_player_command(Unit.PlayerCommandMode.HOLD_POSITION)
+	unit.clear_cover()
+	_threat.disable_mode = threat_disable_mode
+	unit.free()
+	cover.free()
+	await _sync_physics()
+	print("cover evaluator / TakeCover interruption and arrival: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_candidate_position_stuck() -> void:
+	var cover: Cover = _make_cover(Vector3.ZERO, 4.0, [Vector3(4.0, 1.0, 0.0)])
+	var candidate: CoverCandidate = cover.get_cover_candidates()[0]
+	var unit: Unit = _make_unit(candidate.position + Vector3(3.0, 0.0, 0.0))
+	unit.cover_slot_hold_radius = 0.2
+	await _sync_physics()
+	unit.state_machine.transition_to_state(TakeCoverState.ID, candidate)
+	var take_cover: TakeCoverState = unit.state_machine.get_node("TakeCoverState") as TakeCoverState
+	_expect(take_cover._candidate == candidate and unit.reserved_cover == cover,
+		"stuck fixture must activate an exact candidate command")
+	# A remote route waypoint must not accumulate final-destination stuck time.
+	take_cover._route_waypoint = unit.global_position
+	for index in 5:
+		_expect(not take_cover._process_stuck_near_cover(0.25), "remote route waypoint must not trigger final-slot stuck handling")
+	_expect(take_cover._stuck_timer == 0.0 and unit.reserved_cover == cover,
+		"tracking away from the final candidate must reset without releasing its reservation")
+	take_cover._route_waypoint = Vector3.INF
+	unit.global_position = candidate.position + Vector3(0.5, 0.0, 0.0)
+	take_cover._reset_stuck_tracking()
+	_expect(not unit.is_in_reserved_cover_slot()
+		and take_cover._get_horizontal_distance(unit.global_position, candidate.position) < take_cover.stuck_cover_distance
+		and take_cover._get_horizontal_distance(unit.global_position, cover.global_position) > 3.0,
+		"fixture must be outside arrival radius, near the candidate, and far from the Cover center")
+	for index in 3:
+		take_cover._process_state(0.25)
+	_expect(unit.state_machine.is_current_state(TakeCoverState.ID) and unit.reserved_cover == cover,
+		"stuck handling must wait for its full configured duration")
+	take_cover._process_state(0.25)
+	_expect(unit.state_machine.is_current_state(IdleState.ID) and unit.reserved_cover == null
+		and unit.reserved_cover_slot == null and cover.get_slot_occupant(cover.get_cover_slots()[0]) == null,
+		"stuck near the chosen candidate must release its reservation and return to Idle")
+	unit.free()
+	cover.free()
+	await _sync_physics()
+	print("cover evaluator / candidate-position stuck: %s" % ["FAIL" if _failed else "PASS"])
 
 func _make_unit(position: Vector3, enemy: bool = false) -> Unit:
 	var unit: Unit = BASE_UNIT.instantiate() as Unit

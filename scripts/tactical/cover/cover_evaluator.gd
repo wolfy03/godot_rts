@@ -12,7 +12,7 @@ func evaluate(unit: Unit, candidate: CoverCandidate, threat: Unit,
 		navigation: ChunkedUnitNavigation = null) -> CoverEvaluationResult:
 	var result: CoverEvaluationResult = _evaluate_candidate(unit, candidate, threat, navigation)
 	if result.valid:
-		_compare_current_position(result, unit, threat)
+		_apply_current_position_baseline(result, _measure_exposure(unit, unit.global_position, threat))
 	return result
 
 ## Up to seven exposure rays + one outgoing ray per eligible candidate.
@@ -21,12 +21,20 @@ func find_best_candidate(unit: Unit, candidates: Array[CoverCandidate], threat: 
 		navigation: ChunkedUnitNavigation = null) -> CoverEvaluationResult:
 	var best: CoverEvaluationResult = CoverEvaluationResult.new()
 	best.reason = &"no_valid_candidate"
+	if not _has_valid_context(unit, threat):
+		return best
+	var current_exposure: float = _measure_exposure(unit, unit.global_position, threat)
 	for candidate: CoverCandidate in candidates:
 		var result: CoverEvaluationResult = _evaluate_candidate(unit, candidate, threat, navigation)
-		if result.valid and (not best.valid or result.final_score > best.final_score):
+		if not result.valid:
+			continue
+		_apply_current_position_baseline(result, current_exposure)
+		if not result.improves_current_position or not result.protected_from_threat:
+			if not best.valid:
+				best.reason = &"no_improving_candidate"
+			continue
+		if not best.valid or result.final_score > best.final_score:
 			best = result
-	if best.valid:
-		_compare_current_position(best, unit, threat)
 	return best
 
 func _evaluate_candidate(unit: Unit, candidate: CoverCandidate, threat: Unit,
@@ -42,11 +50,7 @@ func _evaluate_candidate(unit: Unit, candidate: CoverCandidate, threat: Unit,
 	var source: Node3D = candidate.get_source()
 	if source != null and (source.is_queued_for_deletion() or not source.is_inside_tree()):
 		return _reject(result, &"invalid_source")
-	if not is_instance_valid(unit) or not is_instance_valid(threat) or unit == threat:
-		return _reject(result, &"invalid_context")
-	if not unit.is_inside_tree() or not threat.is_inside_tree() or unit.get_world_3d() != threat.get_world_3d():
-		return _reject(result, &"invalid_context")
-	if unit.get_current_health() <= 0 or threat.get_current_health() <= 0 or not unit.global_position.is_finite() or not threat.global_position.is_finite():
+	if not _has_valid_context(unit, threat):
 		return _reject(result, &"invalid_context")
 	result.travel_distance = unit.global_position.distance_to(candidate.position)
 	result.threat_distance = candidate.position.distance_to(threat.global_position)
@@ -117,8 +121,16 @@ func _get_threat_aim_position(threat: Unit) -> Vector3:
 			return marker.global_position
 	return threat.get_muzzle_position()
 
-func _compare_current_position(result: CoverEvaluationResult, unit: Unit, threat: Unit) -> void:
-	result.current_exposure_score = _measure_exposure(unit, unit.global_position, threat)
+func _has_valid_context(unit: Unit, threat: Unit) -> bool:
+	if not is_instance_valid(unit) or not is_instance_valid(threat) or unit == threat:
+		return false
+	if not unit.is_inside_tree() or not threat.is_inside_tree() or unit.get_world_3d() != threat.get_world_3d():
+		return false
+	return unit.get_current_health() > 0 and threat.get_current_health() > 0 \
+		and unit.global_position.is_finite() and threat.global_position.is_finite()
+
+func _apply_current_position_baseline(result: CoverEvaluationResult, current_exposure: float) -> void:
+	result.current_exposure_score = current_exposure
 	result.protection_improvement = result.current_exposure_score - result.exposure_score
 	result.improves_current_position = result.travel_distance > 0.05 and result.protection_improvement >= minimum_protection_improvement
 

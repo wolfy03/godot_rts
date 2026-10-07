@@ -118,7 +118,9 @@ func _process_stuck_near_cover(delta: float) -> bool:
 	if _cover == null or _unit.is_in_reserved_cover_slot():
 		_reset_stuck_tracking()
 		return false
-	if _get_horizontal_distance(_unit.global_position, _cover.global_position) > stuck_cover_distance:
+	# The reserved destination can be far from a large Cover's origin. Route
+	# waypoints away from the final slot still reset tracking here.
+	if _get_horizontal_distance(_unit.global_position, _cover_position) > stuck_cover_distance:
 		_reset_stuck_tracking()
 		return false
 

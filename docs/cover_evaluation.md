@@ -13,8 +13,11 @@ AIBrain decision -> Unit legacy candidate query -> CoverEvaluator
 ## Inputs and result contract
 
 `evaluate(unit, candidate, threat, navigation = null)` returns one evaluation.
-`find_best_candidate(unit, candidates, threat, navigation = null)` compares all
-valid results. Optional navigation context is supplied by the caller; the
+`find_best_candidate(unit, candidates, threat, navigation = null)` compares valid
+results that provide physical protection and improve on current exposure. It
+applies these eligibility checks before choosing the highest score, so a higher
+non-improving score cannot hide a usable lower-scoring candidate.
+Optional navigation context is supplied by the caller; the
 evaluator never searches the SceneTree. It checks coarse chunk walkability only,
 not a NavigationAgent path or path length.
 
@@ -32,7 +35,8 @@ Eligible unreserved slots also use the existing blocked-slot physics check.
 Reasons include `invalid_candidate`, `invalid_source`, `non_finite_position`,
 `too_far`, `missing_slot`, `stale_slot_position`, `reserved`, `occupied`,
 `no_protection`, `unreachable`, and `blocked`. No valid batch result returns
-`no_valid_candidate`. A source-less candidate is allowed; a previously bound,
+`no_valid_candidate`. Valid results without protective improvement return
+`no_improving_candidate`. A source-less candidate is allowed; a previously bound,
 freed source is rejected. This is not geometry revision/invalidation tracking.
 
 ## Visibility and scoring
@@ -66,11 +70,14 @@ part of this calculation. Legacy source direction is a cheap eligibility gate;
 physical ray visibility determines protection quality.
 
 There are at most seven exposure rays and one outgoing ray per eligible legacy
-candidate, plus seven current-position exposure rays once for the selected batch
-result. Standalone `evaluate()` also measures its current-position baseline.
+candidate, plus seven current-position exposure rays once per batch. The shared
+baseline is applied to each valid result before selection. Standalone `evaluate()`
+still measures its own current-position baseline and reports a valid evaluation
+even when that candidate does not improve the current position.
 `improves_current_position` requires a move over 0.05m and at least 0.05 exposure
-reduction by default. AIBrain uses this flag to avoid moving for no protective
-gain. Quality evaluation is performed on AI decisions, not Attack/Chase frames.
+reduction by default. Batch selection excludes results below this threshold;
+AIBrain consumes the eligible best result. Quality evaluation is performed on
+AI decisions, not Attack/Chase frames.
 
 ## AI and reservation compatibility
 
@@ -81,12 +88,20 @@ off unless `debug_cover_evaluation` is enabled. Attack/Chase no longer run their
 own per-frame nearest-cover selection. No-threat idle behavior retains the
 legacy nearby Cover query; MoveState/player Cover input remains compatible.
 
+While TakeCoverState has a reservation but no occupied `current_cover`,
+`request_decision()` defers all autonomous decisions before healing, skills or
+combat can interrupt that move. This policy is independent of MoveState's
+`allow_move_interrupt`. Once arrival sets `current_cover`, TakeCoverState's AI
+callback can resume normal decisions, including AttackState.
+
 `Cover.get_candidate_slot()` resolves opaque reservation identity inside the
 source. `reserve_candidate()` rechecks that exact slot, position and availability
 at activation, preserving Marker-based ownership. It never substitutes a nearer
 slot after a reservation race. `TakeCoverState` accepts a Cover, a candidate,
 or `CoverCommandData(candidate)`. Candidate commands move toward the snapshot
-position using the existing Cover route helper and occupancy behavior. If a
+position using the existing Cover route helper and occupancy behavior. Stuck
+tracking measures horizontal distance to this final slot/candidate position,
+not to the Cover origin; remote route waypoints reset the tracking timer. If a
 candidate move gets stuck, it releases the command for AI re-evaluation instead
 of choosing an unrelated nearest Cover. Legacy commands keep their old fallback.
 
@@ -100,7 +115,11 @@ Real collider tests cover open/full/partial visibility, protection without fire,
 weighted candidate comparison, own/other reservations and occupancy, invalid or
 removed snapshots, coarse navigation rejection, two opposite threats, exact
 selected-slot activation, reservation races, and virtual transform/no-side-effect
-behavior. Existing candidate, direction, aim point and navigation tests remain.
+behavior. Regressions also cover a higher-score/non-improving candidate versus
+a lower-score/improving candidate, repeated AI decisions during reserved cover
+travel and resumed combat after arrival, and stuck handling near a slot far from
+its Cover origin. Existing candidate, direction, aim point and navigation tests
+remain.
 
 Production collection still uses authored Marker candidates; no runtime sampling,
 CoverSystem, candidate cache, destruction invalidation, suppression, multi-threat
