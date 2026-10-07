@@ -28,6 +28,9 @@ func _activate(data) -> void:
 	_unit.movement_enabled = true
 
 	_candidate = data.candidate if data is CoverCommandData else data as CoverCandidate
+	# TODO RuntimeCover: Candidate commands currently require a legacy Cover for
+	# reservation and navigation-route execution. Stage 2 needs a source-independent
+	# reservation/execution path before generated/source-less candidates can run.
 	_cover = _candidate.get_source() as Cover if _candidate != null else data as Cover
 	_cover_slot = null
 	if _cover == null:

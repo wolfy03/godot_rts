@@ -86,13 +86,16 @@ AI decisions, not Attack/Chase frames.
 AIBrain searches candidate positions within `max_cover_search_radius` (20m by
 default), supplies the actual threat and optional chunk manager, and issues the
 best protective candidate that improves on current exposure. It caches a
-same-World3D CoverSystem on first use; queries use its registered sources, even
+same-World3D CoverSystem on successful lookup; queries use its registered sources, even
 when its registry is empty. See [CoverSystem](cover_system.md) for registration
 and snapshot policy. Scenes without the service retain the temporary
-`Unit.get_legacy_cover_candidates_nearby()` fallback. Debug output is
+`Unit.get_legacy_cover_candidates_nearby()` fallback while lookup misses retry
+at a configurable interval (default 1s). Debug output is
 off unless `debug_cover_evaluation` is enabled. Attack/Chase no longer run their
-own per-frame nearest-cover selection. No-threat idle behavior retains the
-legacy nearby Cover query; MoveState/player Cover input remains compatible.
+own per-frame nearest-cover selection. No-threat idle also queries CoverSystem,
+then chooses the nearest available legacy-executable candidate without invoking
+the threat-based evaluator. Both paths issue exact candidate commands;
+MoveState/player Cover input and legacy public queries remain compatible.
 
 While TakeCoverState has a reservation but no occupied `current_cover`,
 `request_decision()` defers all autonomous decisions before healing, skills or
@@ -103,7 +106,11 @@ callback can resume normal decisions, including AttackState.
 `Cover.get_candidate_slot()` resolves opaque reservation identity inside the
 source. `reserve_candidate()` rechecks that exact slot, position and availability
 at activation, preserving Marker-based ownership. It never substitutes a nearer
-slot after a reservation race. `TakeCoverState` accepts a Cover, a candidate,
+slot after a reservation race. Source-less candidates can be evaluated/selected
+as data, but cannot yet execute: TakeCoverState requires a legacy Cover source for
+reservation, routing and occupancy. Stage 2 must introduce a source-independent
+reservation/execution path; see [the capability matrix](cover_system.md#stage-2-execution-constraint).
+`TakeCoverState` accepts a Cover, a candidate,
 or `CoverCommandData(candidate)`. Candidate commands move toward the snapshot
 position using the existing Cover route helper and occupancy behavior. Stuck
 tracking measures horizontal distance to this final slot/candidate position,

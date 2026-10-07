@@ -1150,6 +1150,8 @@ func is_in_reserved_cover_slot() -> bool:
 func should_auto_take_cover() -> bool:
 	return not blocks_auto_cover() and current_cover == null and reserved_cover == null
 
+## Legacy compatibility path for callers that still issue a whole Cover command.
+## Production AI selects exact candidates via its CoverSystem query boundary.
 func get_auto_cover() -> Cover:
 	if not should_auto_take_cover():
 		return null
@@ -1389,11 +1391,12 @@ func _remove_cover_effect() -> void:
 	for effect_id in COVER_EFFECT_IDS:
 		remove_effect_id(effect_id)
 
+## Legacy compatibility path; distances here refer to Cover origins, not slots.
 func find_nearest_cover(radius: float) -> Cover:
 	return find_nearest_cover_to(global_position, radius)
 
 ## Deprecated collection path: compatibility fallback for scenes without a
-## CoverSystem. Production threat-based AI queries CoverSystem instead.
+## CoverSystem. Production combat and idle AI query CoverSystem instead.
 ## Availability and tactical quality belong to the evaluator, not this query.
 func get_legacy_cover_candidates_nearby(radius: float) -> Array[CoverCandidate]:
 	var candidates: Array[CoverCandidate] = []
@@ -1408,6 +1411,7 @@ func get_legacy_cover_candidates_nearby(radius: float) -> Array[CoverCandidate]:
 				candidates.append(candidate)
 	return candidates
 
+## Legacy compatibility path used by old commands and the legacy stuck fallback.
 func find_nearest_cover_to(pos: Vector3, radius: float, excluded_cover: Cover = null) -> Cover:
 	var covers = get_tree().get_nodes_in_group("covers")
 	var nearest_cover: Cover = null

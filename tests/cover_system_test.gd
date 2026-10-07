@@ -10,6 +10,9 @@ func _ready() -> void:
 	_test_registration_query_and_snapshots()
 	_test_world_isolation()
 	await _test_legacy_ai_fallback()
+	await _test_idle_registry_and_exact_reservation()
+	await _test_idle_no_service_fallback()
+	_test_late_service_and_replacement()
 	_test_main_level_bootstrap()
 	print("cover_system_test: %s" % ["FAIL" if _failed else "PASS"])
 	get_tree().quit(1 if _failed else 0)
@@ -136,12 +139,152 @@ func _test_legacy_ai_fallback() -> void:
 	unit.clear_player_command()
 	var candidate: CoverCandidate = unit.ai_brain._get_cover_against(threat)
 	_expect(candidate != null and candidate.get_source() == cover and unit.ai_brain._cover_system == null
-		and unit.ai_brain._cover_system_lookup_done, "missing CoverSystem must retain threat-based legacy fallback")
+		and unit.ai_brain._cover_system_retry_after_msec > Time.get_ticks_msec(),
+		"missing CoverSystem must retain threat-based legacy fallback and schedule a bounded retry")
 	unit.begin_player_command(Unit.PlayerCommandMode.HOLD_POSITION)
 	unit.free()
 	threat.free()
 	cover.free()
 	print("cover system / legacy AI fallback: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_idle_registry_and_exact_reservation() -> void:
+	var unit: Unit = _make_unit(self, Vector3(0.0, 1.0, -4.0))
+	unit._skills.clear()
+	var a: Cover = _make_cover(self, Vector3.ZERO, [Vector3(4.0, 1.0, -1.0)])
+	var b: Cover = _make_cover(self, Vector3(6.0, 0.0, 0.0), [Vector3(0.0, 1.0, -1.0),
+		Vector3(-6.0, 1.0, -3.0), Vector3(-6.0, 1.0, -2.0), Vector3(-6.0, 1.0, -1.0)])
+	var unregistered: Cover = _make_cover(self, Vector3(0.0, 0.0, -3.0), [Vector3(0.0, 1.0, -1.5)])
+	var system: CoverSystem = CoverSystem.new()
+	add_child(system)
+	system.unregister_cover_source(unregistered)
+	var other: Unit = _make_unit(self, Vector3(50.0, 1.0, 0.0))
+	b.slot_blocked_check_enabled = false
+	b.reserve_candidate(other, b.get_cover_candidates()[1])
+	b.slot_blocked_check_enabled = true
+	var blocked_position: Vector3 = b.get_cover_slots()[2].global_position
+	var blocker: StaticBody3D = _make_blocker(blocked_position)
+	await _sync_physics()
+	unit.clear_player_command()
+	_expect(unit.get_nearest_detected_enemy() == null and unit.get_auto_cover() == unregistered,
+		"idle fixture must have no threat and a closer legacy Cover outside the registry")
+	var candidate: CoverCandidate = unit.ai_brain._get_idle_cover_candidate()
+	_expect(candidate != null and candidate.get_source() == b
+		and b.get_candidate_slot(candidate) == b.get_cover_slots()[3],
+		"idle query must choose the nearest available registered slot, ignoring Cover origins/reservations/blockers")
+	_expect(unit.reserved_cover == null and b.get_slot_occupant(b.get_cover_slots()[1]) == other,
+		"idle selection must not reserve candidates or modify someone else's reservation")
+	other.occupy_reserved_cover()
+	_expect(unit.ai_brain._get_idle_cover_candidate().reservation_key == candidate.reservation_key,
+		"occupied candidates must remain ineligible for idle selection")
+	var unbound: CoverCandidate = CoverCandidate.new()
+	unbound.position = unit.global_position
+	_expect(not unit.ai_brain._is_idle_candidate_available(unbound),
+		"source-less candidates cannot execute through the legacy idle path yet")
+	_expect(unit.ai_brain.request_decision() and unit.state_machine.is_current_state(TakeCoverState.ID)
+		and unit.reserved_cover_slot == b.get_cover_slots()[3], "idle AI must issue the queried exact slot")
+	var take_cover: TakeCoverState = unit.state_machine.get_node("TakeCoverState") as TakeCoverState
+	_expect(take_cover._candidate != null and take_cover._candidate.reservation_key == candidate.reservation_key,
+		"idle AI must pass CoverCandidate command data rather than the whole Cover")
+	unit.begin_player_command(Unit.PlayerCommandMode.HOLD_POSITION)
+	unit.clear_cover()
+	unit.state_machine.transition_to_state(IdleState.ID, null)
+	# A closer slot becomes available after selection. Exact command activation
+	# must still reserve the original snapshot instead of choosing nearest again.
+	blocker.free()
+	await _sync_physics()
+	unit.ai_brain._issue_cover(candidate)
+	_expect(unit.reserved_cover_slot == b.get_cover_slots()[3],
+		"opening a closer slot after selection must not substitute the chosen identity")
+	unit.clear_cover()
+	unit.state_machine.transition_to_state(IdleState.ID, null)
+	system.unregister_cover_source(a)
+	system.unregister_cover_source(b)
+	unit.clear_player_command()
+	_expect(not unit.ai_brain.request_decision() and unit.state_machine.is_current_state(IdleState.ID)
+		and unit.reserved_cover == null, "empty registry must not leak legacy idle Covers")
+	other.clear_cover()
+	unit.free()
+	other.free()
+	system.free()
+	a.free()
+	b.free()
+	unregistered.free()
+	print("cover system / idle registry preference and exact reservation: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_idle_no_service_fallback() -> void:
+	var unit: Unit = _make_unit(self, Vector3(-4.0, 1.0, -1.0))
+	unit._skills.clear()
+	var cover: Cover = _make_cover(self, Vector3.ZERO, [Vector3(0.0, 1.0, -1.0)])
+	await _sync_physics()
+	unit.clear_player_command()
+	_expect(unit.ai_brain.request_decision() and unit.ai_brain._cover_system == null
+		and unit.state_machine.is_current_state(TakeCoverState.ID) and unit.reserved_cover == cover,
+		"no-service idle fallback must still enter TakeCover through the legacy candidate collector")
+	var take_cover: TakeCoverState = unit.state_machine.get_node("TakeCoverState") as TakeCoverState
+	_expect(take_cover._candidate != null and unit.reserved_cover_slot == cover.get_cover_slots()[0],
+		"idle fallback must also preserve exact candidate reservation")
+	unit.begin_player_command(Unit.PlayerCommandMode.HOLD_POSITION)
+	unit.clear_cover()
+	unit.free()
+	cover.free()
+	print("cover system / no-service idle fallback: %s" % ["FAIL" if _failed else "PASS"])
+
+func _test_late_service_and_replacement() -> void:
+	var unit: Unit = _make_unit(self, Vector3(-4.0, 1.0, -1.0))
+	var cover: Cover = _make_cover(self, Vector3.ZERO, [Vector3(0.0, 1.0, -1.0)])
+	unit.clear_player_command()
+	_expect(unit.ai_brain._get_idle_cover_candidate() != null and unit.ai_brain._cover_system == null,
+		"first lookup before service creation must use legacy fallback")
+	var viewport: SubViewport = SubViewport.new()
+	viewport.world_3d = World3D.new()
+	add_child(viewport)
+	var foreign: CoverSystem = CoverSystem.new()
+	viewport.add_child(foreign)
+	unit.ai_brain._cover_system_retry_after_msec = 0
+	_expect(unit.ai_brain._get_cover_system() == null,
+		"retry must ignore a late service in a different World3D")
+	var a: CoverSystem = CoverSystem.new()
+	add_child(a)
+	a.unregister_cover_source(cover)
+	# Control the deadline rather than waiting one real second; prove cooldown
+	# skips lookup even when a matching service has just appeared.
+	unit.ai_brain._cover_system_retry_after_msec = Time.get_ticks_msec() + 60000
+	_expect(unit.ai_brain._get_cover_system() == null, "missing-service cooldown must suppress repeated group searches")
+	unit.ai_brain._cover_system_retry_after_msec = 0
+	_expect(unit.ai_brain._get_idle_cover_candidate() == null and unit.ai_brain._cover_system == a,
+		"expired retry must discover the late service and respect its empty registry")
+	a.register_cover_source(cover)
+	unit.ai_brain._cover_system_retry_after_msec = Time.get_ticks_msec() + 60000
+	_expect(unit.ai_brain._get_idle_cover_candidate() != null and unit.ai_brain._get_cover_system() == a,
+		"successful cached service must bypass the missing-service retry deadline")
+	a.free()
+	_expect(unit.ai_brain._get_cover_system() == null, "deleted cached service must invalidate safely and allow later retries")
+	var b: CoverSystem = CoverSystem.new()
+	add_child(b)
+	b.unregister_cover_source(cover)
+	unit.ai_brain._cover_system_retry_after_msec = Time.get_ticks_msec() + 60000
+	_expect(unit.ai_brain._get_cover_system() == null, "replacement discovered after a miss must respect the retry cooldown")
+	unit.ai_brain._cover_system_retry_after_msec = 0
+	_expect(unit.ai_brain._get_idle_cover_candidate() == null and unit.ai_brain._cover_system == b,
+		"retry must find replacement service B and stop the legacy candidate leak")
+	remove_child(b)
+	_expect(unit.ai_brain._get_cover_system() == null, "detached service must not remain a valid cached reference")
+	add_child(b)
+	unit.ai_brain._cover_system_retry_after_msec = 0
+	_expect(unit.ai_brain._get_cover_system() == b, "reattached same-world service can be rediscovered after retry")
+	b.reparent(viewport)
+	_expect(unit.ai_brain._get_cover_system() == null, "cached service moved to another World3D must be invalidated")
+	b.reparent(self)
+	unit.ai_brain._cover_system_retry_after_msec = 0
+	_expect(unit.ai_brain._get_cover_system() == b, "returned same-world service must be discoverable after cooldown")
+	b.queue_free()
+	_expect(unit.ai_brain._get_cover_system() == null, "queued cached service must be rejected before deletion")
+	b.free()
+	unit.begin_player_command(Unit.PlayerCommandMode.HOLD_POSITION)
+	unit.free()
+	cover.free()
+	viewport.free()
+	print("cover system / late discovery, cooldown, replacement, World3D isolation: %s" % ["FAIL" if _failed else "PASS"])
 
 func _test_main_level_bootstrap() -> void:
 	var level: Node3D = MAIN_LEVEL.instantiate() as Node3D
@@ -189,6 +332,22 @@ func _make_unit(parent: Node, position: Vector3, enemy: bool = false) -> Unit:
 	(unit.get_node("NavigationAgent") as NavigationAgent3D).avoidance_enabled = false
 	parent.add_child(unit)
 	return unit
+
+func _make_blocker(position: Vector3) -> StaticBody3D:
+	var body: StaticBody3D = StaticBody3D.new()
+	body.position = position
+	var collider: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3.ONE * 0.5
+	collider.shape = shape
+	body.add_child(collider)
+	add_child(body)
+	return body
+
+func _sync_physics() -> void:
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	await get_tree().process_frame
 
 func _find_by_key(candidates: Array[CoverCandidate], key: StringName) -> CoverCandidate:
 	for candidate: CoverCandidate in candidates:
