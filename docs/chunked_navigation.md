@@ -71,6 +71,13 @@ Two registration APIs distinguish geometry changes from entirely blocked bounds:
   closed collider surface rasterization may leave near chunk boundaries.
 
 Put geometry under the configured source root so normal parsing includes it.
+Dynamic geometry should be the source root itself or one of its descendants
+for its actual collider/mesh shape to participate in runtime bake. Registration
+outside an existing root warns with node/root paths but still succeeds:
+dynamic geometry will dirty chunks without having its actual shape parsed;
+solid blockers still contribute projected AABB blocking, but their source
+geometry outside the root is not parsed. Empty or missing roots do not trigger
+registration warnings; runtime bake reports that configuration separately.
 Both APIs store combined world bounds of shapes/meshes; without geometry,
 explicit/default avoidance dimensions supply fallback bounds. Their registries
 are disjoint. Re-registering can change the role and removes the former role.
@@ -86,11 +93,19 @@ automatically by instance ID. Manual unregister followed by deletion is idempote
 The temporary NavigationObstacle3D is 2D avoidance on layers 3 (matching the
 base ground agent's mask). It does not supply bake geometry. The collider/source
 data and registered bounds supply that geometry independently. Explicit
-avoidance radius/height override its automatic bounds-based dimensions. Both
-registration APIs accept `add_temporary_navigation_obstacle = false` to skip
-creating this helper. Unregister defaults to disabling avoidance immediately and
-queueing the helper for deletion. After unregister, a new registration creates
-a fresh helper, including when the old helper is still queued for deletion.
+avoidance radius/height override its automatic bounds-based dimensions.
+Both registration APIs enforce the same contract on every call, including
+re-registration and changes between dynamic geometry and solid blocker roles:
+
+- `add_temporary_navigation_obstacle = true` ensures an enabled helper exists.
+- `add_temporary_navigation_obstacle = false` disables any existing helper
+  immediately and queues it for deletion; it is absent after deferred deletion.
+
+Unregister uses the same removal helper by default. A subsequent true registration
+creates a fresh helper when the old one is queued for deletion. Same-frame
+`true -> false -> true` and `unregister -> register(true)` are safe: deleting the
+old helper does not remove the replacement. The geometry registry role and
+temporary avoidance choice are applied independently.
 
 ## Queue and synchronization
 
@@ -104,6 +119,12 @@ repathing follow on subsequent physics frames.
 Completion clears dirty only when they still match; otherwise it queues one
 additional bake. Only one manager bake is active at a time. Reinitialization
 disables/removes old regions and ignores stale completions by generation.
+`clear_chunks()` removes generated navigation regions, chunks and bake state
+only. Registered dynamic geometry, solid blockers and their temporary avoidance
+helpers intentionally persist: rebuilding navigation regions does not reset
+world geometry registrations. Explicitly unregister geometry (or remove its
+source node) when its world registration should end. Reinitialized regions
+still need their initial dirty marks before runtime baking.
 `chunk_bake_finished` means mesh assignment finished, not that the navigation
 map has synchronized. Region and map iterations are separate asynchronous
 snapshots. Integration tests wait for queue completion, region iteration changes
@@ -147,7 +168,9 @@ invalidation, automatic repathing during movement, and failed command recovery.
 It also verifies that parsed wall fragments leave a passage inside their combined
 AABB, and that an empty path waits beyond 0.5 seconds until a configured timeout.
 Manager tests cover matching/mismatched voxel settings, invalid dimensions,
-registration roles, projected obstruction policy, and temporary helper removal.
+registration roles, projected obstruction policy, temporary helper removal,
+same-frame true/false/true transitions, warning-only outside-root registration,
+and geometry registry persistence across region clearing/reinitialization.
 Negative validation cases intentionally emit `[NAV]` errors; successful assertions
 and the final PASS/exit code distinguish these from unexpected failures.
 No runtime integration test uses manual chunk portals.

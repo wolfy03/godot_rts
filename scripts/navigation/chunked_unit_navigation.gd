@@ -118,6 +118,9 @@ func _warn_source_root_transform() -> void:
 	if not is_equal_approx(scale.x, scale.y) or not is_equal_approx(scale.y, scale.z):
 		push_warning("[NAV] Source geometry root has non-uniform scale. Projected XZ obstructions may not match geometry.")
 
+## Clears generated navigation chunks and bake state only.
+## Registered world geometry intentionally persists so reinitializing regions
+## does not lose runtime geometry tracking or temporary avoidance helpers.
 func clear_chunks() -> void:
 	_generation += 1
 	for data: ChunkData in _chunks.values():
@@ -222,6 +225,8 @@ func mark_world_bounds_dirty(world_bounds: AABB) -> void:
 			mark_chunk_dirty(Vector2i(x, z))
 
 ## Actual collider geometry is parsed from the source root; openings stay open.
+## Every registration reapplies temporary avoidance: true ensures an enabled
+## helper; false disables and queues any existing helper for deletion.
 func register_dynamic_geometry(
 	geometry_node: Node3D,
 	add_temporary_navigation_obstacle: bool = true,
@@ -231,6 +236,7 @@ func register_dynamic_geometry(
 	return _register_navigation_geometry(geometry_node, false, add_temporary_navigation_obstacle, avoidance_radius, avoidance_height)
 
 ## Explicit opt-in for objects whose entire world AABB is unwalkable.
+## Temporary avoidance follows the same registration contract as dynamic geometry.
 func register_solid_blocker(
 	blocker_node: Node3D,
 	add_temporary_navigation_obstacle: bool = true,
@@ -249,6 +255,7 @@ func _register_navigation_geometry(
 	if not _initialized or not is_instance_valid(geometry_node):
 		return Vector2i(-1, -1)
 
+	_warn_if_geometry_outside_source_root(geometry_node, solid_blocker)
 	var coords := get_chunk_coords(geometry_node.global_position)
 	var instance_id: int = geometry_node.get_instance_id()
 	# Re-registration can also change the role. Dirty old bounds and keep the
@@ -266,6 +273,8 @@ func _register_navigation_geometry(
 
 	if add_temporary_navigation_obstacle:
 		_ensure_navigation_obstacle(geometry_node, avoidance_radius, avoidance_height)
+	else:
+		_remove_temporary_navigation_obstacle(geometry_node)
 
 	return coords
 
@@ -275,10 +284,19 @@ func unregister_navigation_geometry(geometry_node: Node3D, remove_temporary_navi
 
 	_unregister_navigation_geometry_by_id(geometry_node.get_instance_id())
 	if remove_temporary_navigation_obstacle:
-		var existing: NavigationObstacle3D = geometry_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D
-		if existing != null:
-			existing.avoidance_enabled = false
-			existing.queue_free()
+		_remove_temporary_navigation_obstacle(geometry_node)
+
+func _warn_if_geometry_outside_source_root(geometry_node: Node3D, solid_blocker: bool) -> void:
+	if source_geometry_root_path == NodePath():
+		return
+	var source_root: Node3D = get_node_or_null(source_geometry_root_path) as Node3D
+	if source_root == null or geometry_node == source_root or source_root.is_ancestor_of(geometry_node):
+		return
+	var consequence: String = "It will dirty navigation chunks, but its actual collider/mesh geometry will not be parsed during runtime bake."
+	if solid_blocker:
+		consequence = "Its source geometry will not be parsed during runtime bake; only registered projected AABB blocking will be available."
+	push_warning("[NAV] Registered navigation geometry is outside source_geometry_root. node=%s source_root=%s. %s"
+		% [geometry_node.get_path(), source_root.get_path(), consequence])
 
 ## Removal uses the registered bounds even if the obstacle has moved or freed.
 ## Remove its bake geometry before the scheduled parse (free/reparent/disable).
@@ -522,6 +540,14 @@ func _get_navigation_region_parent() -> Node:
 		if parent != null:
 			return parent
 	return self
+
+## false registration and unregister share immediate disable / deferred removal.
+func _remove_temporary_navigation_obstacle(geometry_node: Node3D) -> void:
+	var obstacle: NavigationObstacle3D = geometry_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	if obstacle == null:
+		return
+	obstacle.avoidance_enabled = false
+	obstacle.queue_free()
 
 func _ensure_navigation_obstacle(obstacle_node: Node3D, avoidance_radius: float, avoidance_height: float) -> NavigationObstacle3D:
 	var navigation_obstacle: NavigationObstacle3D = obstacle_node.get_node_or_null("TemporaryNavigationObstacle3D") as NavigationObstacle3D

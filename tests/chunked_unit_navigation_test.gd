@@ -18,6 +18,9 @@ func _ready() -> void:
 	await _test_local_flat_meshes_and_reinitialization()
 	await _test_solid_blocker_bounds_and_removal()
 	await _test_dynamic_geometry_registration()
+	await _test_re_registration_can_disable_temporary_avoidance()
+	_test_source_root_registration_warning_policy()
+	await _test_clear_chunks_preserves_registered_geometry()
 
 	await get_tree().create_timer(0.1).timeout
 	if _failed:
@@ -270,6 +273,138 @@ func _test_dynamic_geometry_registration() -> void:
 		"manual unregister followed by tree_exiting must be idempotent")
 	_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 0
 		and navigation.get_debug_snapshot().solid_blocker_count == 0, "unregister must clear both registries")
+	navigation.queue_free()
+
+func _test_re_registration_can_disable_temporary_avoidance() -> void:
+	var navigation: ChunkedUnitNavigation = _make_navigation() as ChunkedUnitNavigation
+	for solid_role: bool in [false, true]:
+		var geometry: Node3D = Node3D.new()
+		add_child(geometry)
+		geometry.global_position = Vector3(15.0, 0.0, 15.0)
+		navigation.register_dynamic_geometry(geometry, true)
+		var temporary: NavigationObstacle3D = geometry.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+		var previous_helper_id: int = temporary.get_instance_id()
+		_expect(temporary.avoidance_enabled, "true registration must enable temporary avoidance")
+		if solid_role:
+			navigation.register_solid_blocker(geometry, false)
+		else:
+			navigation.register_dynamic_geometry(geometry, false)
+		_expect(not temporary.avoidance_enabled and temporary.is_queued_for_deletion(),
+			"false re-registration must immediately disable and queue the previous helper")
+		_expect(navigation.get_debug_snapshot().dynamic_geometry_count == (0 if solid_role else 1)
+			and navigation.get_debug_snapshot().solid_blocker_count == (1 if solid_role else 0),
+			"geometry role must change independently of temporary avoidance")
+		await get_tree().process_frame
+		_expect(geometry.get_node_or_null("TemporaryNavigationObstacle3D") == null,
+			"false re-registration must remove temporary avoidance by the next frame")
+		if solid_role:
+			navigation.register_solid_blocker(geometry, true)
+		else:
+			navigation.register_dynamic_geometry(geometry, true)
+		temporary = geometry.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+		_expect(temporary.avoidance_enabled and temporary.get_instance_id() != previous_helper_id,
+			"true registration after removal must create a new enabled helper")
+		previous_helper_id = temporary.get_instance_id()
+		# Change role while disabling, then re-enable without waiting for deletion.
+		if solid_role:
+			navigation.register_dynamic_geometry(geometry, false)
+		else:
+			navigation.register_solid_blocker(geometry, false)
+		_expect(not temporary.avoidance_enabled, "role change to false must immediately disable the old helper")
+		if solid_role:
+			navigation.register_dynamic_geometry(geometry, true)
+		else:
+			navigation.register_solid_blocker(geometry, true)
+		temporary = geometry.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+		_expect(temporary.avoidance_enabled and temporary.get_instance_id() != previous_helper_id,
+			"same-frame true/false/true must replace the queued helper")
+		_expect(navigation.get_debug_snapshot().dynamic_geometry_count == (1 if solid_role else 0)
+			and navigation.get_debug_snapshot().solid_blocker_count == (0 if solid_role else 1),
+			"both directions of role changes must keep the registries disjoint")
+		await get_tree().process_frame
+		_expect(geometry.get_node_or_null("TemporaryNavigationObstacle3D") == temporary and temporary.avoidance_enabled,
+			"deletion of the old helper must not affect the replacement")
+		navigation.register_dynamic_geometry(geometry, false)
+		var previous_revision: int = _debug_chunk(navigation, Vector2i(1, 1)).dirty_revision
+		geometry.queue_free()
+		await get_tree().process_frame
+		_expect(_debug_chunk(navigation, Vector2i(1, 1)).dirty_revision == previous_revision + 1,
+			"freeing geometry with a queued helper must safely unregister its bounds once")
+		_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 0
+			and navigation.get_debug_snapshot().solid_blocker_count == 0, "source deletion must remove geometry tracking")
+	print("temporary avoidance re-registration lifecycle: PASS" if not _failed else "temporary avoidance re-registration lifecycle: FAIL")
+	navigation.queue_free()
+
+func _test_source_root_registration_warning_policy() -> void:
+	var navigation: ChunkedUnitNavigation = _make_navigation() as ChunkedUnitNavigation
+	var source_root: Node3D = Node3D.new()
+	source_root.name = "RegistrationWorldGeometry"
+	add_child(source_root)
+	navigation.source_geometry_root_path = navigation.get_path_to(source_root)
+	var inside: Node3D = Node3D.new()
+	source_root.add_child(inside)
+	inside.global_position = Vector3(15.0, 0.0, 15.0)
+	navigation.register_dynamic_geometry(source_root, false)
+	navigation.register_dynamic_geometry(inside, false)
+	_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 2, "source root and descendants must register normally")
+	var outside: Node3D = Node3D.new()
+	outside.name = "OutsideRegisteredWall"
+	add_child(outside)
+	outside.global_position = Vector3(25.0, 0.0, 25.0)
+	print("source root validation: expected dynamic geometry warning")
+	_expect(navigation.register_dynamic_geometry(outside, false) == Vector2i(2, 2),
+		"outside dynamic geometry must still register despite warning")
+	_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 3 and navigation.is_chunk_dirty(Vector2i(2, 2)),
+		"warning must not suppress registry or dirty updates")
+	print("source root validation: expected solid blocker warning")
+	navigation.register_solid_blocker(outside, false)
+	_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 2
+		and navigation.get_debug_snapshot().solid_blocker_count == 1, "outside solid blocker must still register")
+	var source: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
+	navigation._append_registered_solid_blockers(source, Vector3.ZERO, AABB(Vector3.ZERO, Vector3.ONE * 50.0))
+	_expect(source.get_projected_obstructions().size() == 1, "outside solid blocker must still project its registered AABB")
+	# Missing/unconfigured roots are handled by the runtime bake warning instead.
+	navigation.source_geometry_root_path = NodePath()
+	navigation.register_dynamic_geometry(outside, false)
+	navigation.source_geometry_root_path = NodePath("MissingSourceRoot")
+	navigation.register_solid_blocker(outside, false)
+	_expect(navigation.get_debug_snapshot().solid_blocker_count == 1, "missing source root must not prevent registration")
+	outside.free()
+	source_root.free()
+	navigation.queue_free()
+
+func _test_clear_chunks_preserves_registered_geometry() -> void:
+	var navigation: ChunkedUnitNavigation = _make_navigation() as ChunkedUnitNavigation
+	var geometry: Node3D = Node3D.new()
+	var blocker: Node3D = Node3D.new()
+	add_child(geometry)
+	add_child(blocker)
+	geometry.global_position = Vector3(15.0, 0.0, 15.0)
+	blocker.global_position = Vector3(25.0, 0.0, 25.0)
+	navigation.register_dynamic_geometry(geometry, true)
+	navigation.register_solid_blocker(blocker, true)
+	var temporary: NavigationObstacle3D = geometry.get_node("TemporaryNavigationObstacle3D") as NavigationObstacle3D
+	navigation.clear_chunks()
+	await get_tree().process_frame
+	var snapshot: Dictionary = navigation.get_debug_snapshot()
+	_expect(snapshot.chunks.is_empty() and snapshot.queued_count == 0 and not snapshot.initialized,
+		"clear_chunks must remove only generated chunks and bake state")
+	_expect(snapshot.dynamic_geometry_count == 1 and snapshot.solid_blocker_count == 1,
+		"clear_chunks must preserve both world geometry registries")
+	_expect(geometry.get_node_or_null("TemporaryNavigationObstacle3D") == temporary and temporary.avoidance_enabled,
+		"clearing regions must preserve registered world avoidance")
+	navigation.initialize_chunks()
+	_expect(navigation.get_chunk_count() == 25 and navigation.get_debug_snapshot().dynamic_geometry_count == 1
+		and navigation.get_debug_snapshot().solid_blocker_count == 1, "reinitialization must preserve geometry registrations")
+	var source: NavigationMeshSourceGeometryData3D = NavigationMeshSourceGeometryData3D.new()
+	navigation._append_registered_solid_blockers(source, Vector3.ZERO, AABB(Vector3.ZERO, Vector3.ONE * 50.0))
+	_expect(source.get_projected_obstructions().size() == 1, "preserved blocker must still contribute to future bakes")
+	geometry.free()
+	blocker.free()
+	_expect(navigation.is_chunk_dirty(Vector2i(1, 1)) and navigation.is_chunk_dirty(Vector2i(2, 2)),
+		"source exit tracking must still dirty rebuilt regions")
+	_expect(navigation.get_debug_snapshot().dynamic_geometry_count == 0 and navigation.get_debug_snapshot().solid_blocker_count == 0,
+		"preserved registrations must still unregister when sources exit")
 	navigation.queue_free()
 
 func _debug_chunk(navigation: ChunkedUnitNavigation, coords: Vector2i) -> Dictionary:
