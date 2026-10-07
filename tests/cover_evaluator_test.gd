@@ -7,11 +7,15 @@ var _failed: bool = false
 var _evaluator: CoverEvaluator = CoverEvaluator.new()
 var _unit: Unit
 var _threat: Unit
+var _cover_system: CoverSystem
 
 func _ready() -> void:
+	_cover_system = CoverSystem.new()
+	add_child(_cover_system)
 	_unit = _make_unit(Vector3(-6.0, 1.0, -4.0))
 	_threat = _make_unit(Vector3(0.0, 1.0, 8.0), true)
 	await _sync_physics()
+	_test_batch_context_and_empty_candidates()
 	await _test_geometry_scores()
 	await _test_improvement_aware_selection()
 	_test_virtual_points_and_side_effects()
@@ -21,6 +25,21 @@ func _ready() -> void:
 	await _test_candidate_position_stuck()
 	print("cover_evaluator_test: %s" % ["FAIL" if _failed else "PASS"])
 	get_tree().quit(1 if _failed else 0)
+
+func _test_batch_context_and_empty_candidates() -> void:
+	var evaluator: ExposureCountingEvaluator = ExposureCountingEvaluator.new()
+	var candidates: Array[CoverCandidate] = [_candidate(_unit.global_position + Vector3.RIGHT)]
+	_expect(evaluator.find_best_candidate(null, candidates, _threat).reason == &"invalid_context"
+		and evaluator.find_best_candidate(_unit, candidates, null).reason == &"invalid_context",
+		"null Unit and threat must report invalid_context in batch evaluation")
+	var health: int = _unit._current_health
+	_unit._current_health = 0
+	_expect(evaluator.find_best_candidate(_unit, candidates, _threat).reason == &"invalid_context",
+		"dead Unit must report invalid_context before any exposure rays")
+	_unit._current_health = health
+	var empty: CoverEvaluationResult = evaluator.find_best_candidate(_unit, [], _threat)
+	_expect(not empty.valid and empty.reason == &"no_valid_candidate" and evaluator.exposure_measurements == 0,
+		"invalid context and an empty batch must not measure exposure")
 
 func _test_geometry_scores() -> void:
 	var exposed: CoverCandidate = _candidate(Vector3(-5.0, 1.0, -4.0))
@@ -193,6 +212,17 @@ func _test_ai_threat_and_exact_reservation() -> void:
 		"direction alone must not claim protection when all virtual AimPoints are visible")
 	var against_a: CoverCandidate = _unit.ai_brain._get_cover_against(_threat)
 	var against_b: CoverCandidate = _unit.ai_brain._get_cover_against(opposite)
+	_expect(_unit.ai_brain._cover_system == _cover_system
+		and _cover_system.get_debug_snapshot()["last_query_candidate_count"] > 0,
+		"AI must use the level-local CoverSystem query rather than the legacy collector")
+	_cover_system.unregister_cover_source(cover)
+	_cover_system.unregister_cover_source(nearby)
+	_expect(not _unit.get_legacy_cover_candidates_nearby(20.0).is_empty()
+		and _unit.ai_brain._get_cover_against(_threat) == null
+		and _cover_system.get_debug_snapshot()["last_query_candidate_count"] == 0,
+		"an empty CoverSystem must not leak unregistered covers from the legacy group")
+	_cover_system.register_cover_source(cover)
+	_cover_system.register_cover_source(nearby)
 	_expect(against_a != null and against_b != null, "AI must find protective candidates for both actual threats")
 	if against_a != null and against_b != null:
 		_expect(against_a.get_source() == cover and against_b.get_source() == cover,
@@ -334,6 +364,7 @@ func _make_cover(position: Vector3, height: float, slot_positions: Array[Vector3
 		slots.add_child(marker)
 	_set_cover_height(cover, height)
 	add_child(cover)
+	_cover_system.register_cover_source(cover)
 	return cover
 
 func _set_cover_height(cover: Cover, height: float) -> void:
@@ -368,3 +399,10 @@ func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		_failed = true
 		push_error(message)
+
+class ExposureCountingEvaluator extends CoverEvaluator:
+	var exposure_measurements: int = 0
+
+	func _measure_exposure(unit: Unit, position: Vector3, threat: Unit) -> float:
+		exposure_measurements += 1
+		return super._measure_exposure(unit, position, threat)

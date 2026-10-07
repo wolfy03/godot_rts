@@ -16,6 +16,7 @@
 [ext_resource type="Resource" path="res://assets/inventory/items/rifle.tres" id="11_rifle_item"]
 [ext_resource type="Resource" path="res://assets/inventory/items/machine_gun.tres" id="12_machine_gun_item"]
 [ext_resource type="Resource" path="res://assets/inventory/items/magazine.tres" id="13_magazine_item"]
+[ext_resource type="Script" path="res://scripts/tactical/cover/cover_system.gd" id="14_cover_system"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_bk1f5"]
 vertices = PackedVector3Array(-24.5, 1, -25.5, -24.5, 1, 23.5, 24.5, 1, 23.5, 24.5, 1, -25.5)
@@ -197,3 +198,6 @@ use_collision = true
 collision_mask = 0
 size = Vector3(4, 5, 2)
 material = SubResource("StandardMaterial3D_qtd55")
+
+[node name="CoverSystem" type="Node3D" parent="."]
+script = ExtResource("14_cover_system")

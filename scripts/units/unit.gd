@@ -1392,7 +1392,8 @@ func _remove_cover_effect() -> void:
 func find_nearest_cover(radius: float) -> Cover:
 	return find_nearest_cover_to(global_position, radius)
 
-## Temporary legacy query boundary; CoverSystem will replace collection later.
+## Deprecated collection path: compatibility fallback for scenes without a
+## CoverSystem. Production threat-based AI queries CoverSystem instead.
 ## Availability and tactical quality belong to the evaluator, not this query.
 func get_legacy_cover_candidates_nearby(radius: float) -> Array[CoverCandidate]:
 	var candidates: Array[CoverCandidate] = []

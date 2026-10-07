@@ -17,6 +17,8 @@ const STATE_HEAL := "HEAL_STATE"
 var _unit: Unit
 var _decision_timer: Timer
 var _cover_evaluator: CoverEvaluator = CoverEvaluator.new()
+var _cover_system: CoverSystem = null
+var _cover_system_lookup_done: bool = false
 
 func _ready() -> void:
 	_unit = owner as Unit
@@ -109,12 +111,42 @@ func _get_cover_against(target: Unit) -> CoverCandidate:
 		return null
 
 	_cover_evaluator.max_travel_distance = max_cover_search_radius
+	var candidates: Array[CoverCandidate]
+	var cover_system: CoverSystem = _get_cover_system()
+	if cover_system != null:
+		candidates = cover_system.query_candidates(_unit.global_position, max_cover_search_radius)
+	else:
+		# Temporary compatibility fallback. Remove after every combat level owns
+		# a CoverSystem. An empty registry never falls back to the covers group.
+		candidates = _unit.get_legacy_cover_candidates_nearby(max_cover_search_radius)
 	var result: CoverEvaluationResult = _cover_evaluator.find_best_candidate(_unit,
-		_unit.get_legacy_cover_candidates_nearby(max_cover_search_radius), target, _get_cover_navigation_context())
+		candidates, target, _get_cover_navigation_context())
 	if debug_cover_evaluation:
 		print("[COVER] valid=%s score=%.3f exposure=%.3f improvement=%.3f reason=%s"
 			% [result.valid, result.final_score, result.exposure_score, result.protection_improvement, result.reason])
 	return result.candidate if result.valid else null
+
+func _get_cover_system() -> CoverSystem:
+	if is_instance_valid(_cover_system) and _cover_system.is_inside_tree() \
+			and not _cover_system.is_queued_for_deletion() and _cover_system.get_world_3d() == _unit.get_world_3d():
+		return _cover_system
+	if _cover_system != null:
+		# Resolve again only when a previously cached service is lost or changes
+		# world. Missing-service fallback does not scan every decision tick.
+		_cover_system = null
+		_cover_system_lookup_done = false
+	if _cover_system_lookup_done:
+		return null
+	_cover_system_lookup_done = true
+	for node: Node in _unit.get_tree().get_nodes_in_group("cover_system"):
+		var system: CoverSystem = node as CoverSystem
+		if is_instance_valid(system) and not system.is_queued_for_deletion() \
+				and system.get_world_3d() == _unit.get_world_3d():
+			_cover_system = system
+			return system
+	if debug_cover_evaluation:
+		print("[COVER] CoverSystem unavailable; using legacy query fallback.")
+	return null
 
 func _get_cover_navigation_context() -> ChunkedUnitNavigation:
 	for node: Node in _unit.get_tree().get_nodes_in_group("chunked_unit_navigation"):

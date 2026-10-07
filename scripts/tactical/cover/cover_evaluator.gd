@@ -22,6 +22,9 @@ func find_best_candidate(unit: Unit, candidates: Array[CoverCandidate], threat: 
 	var best: CoverEvaluationResult = CoverEvaluationResult.new()
 	best.reason = &"no_valid_candidate"
 	if not _has_valid_context(unit, threat):
+		best.reason = &"invalid_context"
+		return best
+	if candidates.is_empty():
 		return best
 	var current_exposure: float = _measure_exposure(unit, unit.global_position, threat)
 	for candidate: CoverCandidate in candidates:

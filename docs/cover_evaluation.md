@@ -5,7 +5,7 @@ it does not collect scene nodes, reserve slots, move units, or change states.
 The combat path is:
 
 ```text
-AIBrain decision -> Unit legacy candidate query -> CoverEvaluator
+AIBrain decision -> CoverSystem spatial query -> CoverEvaluator
                 -> CoverEvaluationResult -> CoverCommandData
                 -> TakeCoverState -> Cover exact legacy slot reservation
 ```
@@ -35,7 +35,9 @@ Eligible unreserved slots also use the existing blocked-slot physics check.
 Reasons include `invalid_candidate`, `invalid_source`, `non_finite_position`,
 `too_far`, `missing_slot`, `stale_slot_position`, `reserved`, `occupied`,
 `no_protection`, `unreachable`, and `blocked`. No valid batch result returns
-`no_valid_candidate`. Valid results without protective improvement return
+`no_valid_candidate`. Invalid Unit/threat context consistently returns
+`invalid_context` in both APIs. An empty batch with valid context returns
+`no_valid_candidate` without exposure rays. Valid results without protective improvement return
 `no_improving_candidate`. A source-less candidate is allowed; a previously bound,
 freed source is rejected. This is not geometry revision/invalidation tracking.
 
@@ -83,7 +85,11 @@ AI decisions, not Attack/Chase frames.
 
 AIBrain searches candidate positions within `max_cover_search_radius` (20m by
 default), supplies the actual threat and optional chunk manager, and issues the
-best protective candidate that improves on current exposure. Debug output is
+best protective candidate that improves on current exposure. It caches a
+same-World3D CoverSystem on first use; queries use its registered sources, even
+when its registry is empty. See [CoverSystem](cover_system.md) for registration
+and snapshot policy. Scenes without the service retain the temporary
+`Unit.get_legacy_cover_candidates_nearby()` fallback. Debug output is
 off unless `debug_cover_evaluation` is enabled. Attack/Chase no longer run their
 own per-frame nearest-cover selection. No-threat idle behavior retains the
 legacy nearby Cover query; MoveState/player Cover input remains compatible.
@@ -122,7 +128,7 @@ its Cover origin. Existing candidate, direction, aim point and navigation tests
 remain.
 
 Production collection still uses authored Marker candidates; no runtime sampling,
-CoverSystem, candidate cache, destruction invalidation, suppression, multi-threat
+candidate cache, destruction invalidation, suppression, multi-threat
 scoring, or squad allocation exists yet. Current pose is preserved: CROUCHING
 metadata does not lower AimPoints or alter animation. Legacy slot heights can
 therefore leave a low wall physically unprotective, despite its direction and
