@@ -139,7 +139,8 @@ func _test_legacy_cover_flow() -> void:
 	threat.position = Vector3(30.0, 0.0, 0.0)
 	add_child(threat)
 	_expect(unit.get_auto_cover() == cover, "legacy nearest available Cover must remain selected")
-	_expect(unit.ai_brain._get_cover_against(threat) == cover, "AI must still return a Cover")
+	# Threat-based AI selection is tested separately by cover_evaluator_test.
+	# This fixture keeps the legacy Cover input/reservation compatibility contract.
 	unit.ai_brain._issue_cover(cover)
 	_expect(unit.state_machine.is_current_state(TakeCoverState.ID), "AI must still activate TakeCoverState")
 	var reserved_slot: Marker3D = cover.get_reserved_slot(unit)

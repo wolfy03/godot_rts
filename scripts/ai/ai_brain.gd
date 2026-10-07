@@ -11,9 +11,12 @@ const STATE_HEAL := "HEAL_STATE"
 
 @export var decision_interval: float = 0.25
 @export var medic_heal_search_radius: float = 12.0
+@export var max_cover_search_radius: float = 20.0
+@export var debug_cover_evaluation: bool = false
 
 var _unit: Unit
 var _decision_timer: Timer
+var _cover_evaluator: CoverEvaluator = CoverEvaluator.new()
 
 func _ready() -> void:
 	_unit = owner as Unit
@@ -97,11 +100,24 @@ func _request_combat_decision(current_state_id: String, allow_move_interrupt: bo
 
 	return false
 
-func _get_cover_against(target: Unit) -> Cover:
+func _get_cover_against(target: Unit) -> CoverCandidate:
 	if not _unit.should_prioritize_cover_against(target):
 		return null
 
-	return _unit.get_auto_cover()
+	_cover_evaluator.max_travel_distance = max_cover_search_radius
+	var result: CoverEvaluationResult = _cover_evaluator.find_best_candidate(_unit,
+		_unit.get_legacy_cover_candidates_nearby(max_cover_search_radius), target, _get_cover_navigation_context())
+	if debug_cover_evaluation:
+		print("[COVER] valid=%s score=%.3f exposure=%.3f improvement=%.3f reason=%s"
+			% [result.valid, result.final_score, result.exposure_score, result.protection_improvement, result.reason])
+	return result.candidate if result.valid and result.protected_from_threat and result.improves_current_position else null
+
+func _get_cover_navigation_context() -> ChunkedUnitNavigation:
+	for node: Node in _unit.get_tree().get_nodes_in_group("chunked_unit_navigation"):
+		var navigation: ChunkedUnitNavigation = node as ChunkedUnitNavigation
+		if is_instance_valid(navigation):
+			return navigation
+	return null
 
 func _issue_heal(target: Unit) -> void:
 	_unit.clear_cover()
@@ -113,5 +129,6 @@ func _issue_attack(target: Unit) -> void:
 func _issue_chase(target: Unit) -> void:
 	_unit.state_machine.transition_to_state(STATE_CHASE, target)
 
-func _issue_cover(cover: Cover) -> void:
-	_unit.state_machine.transition_to_state(STATE_TAKE_COVER, cover)
+func _issue_cover(cover: Variant) -> void:
+	var data: Variant = TakeCoverState.CoverCommandData.new(cover) if cover is CoverCandidate else cover
+	_unit.state_machine.transition_to_state(STATE_TAKE_COVER, data)

@@ -123,8 +123,49 @@ func create_candidate_from_slot(slot: Marker3D) -> CoverCandidate:
 			candidate.stance = CoverStance.Type.STANDING
 	# Instance ID isolates covers; relative slot path distinguishes their slots
 	# and keeps keys stable when the Cover is renamed or reparented.
-	candidate.reservation_key = StringName("%d:%s" % [get_instance_id(), get_path_to(slot)])
+	candidate.reservation_key = _get_candidate_reservation_key(slot)
 	return candidate
+
+## Only the source interprets legacy identity; candidates do not own Markers.
+func get_candidate_slot(candidate: CoverCandidate) -> Marker3D:
+	if candidate == null or candidate.get_source() != self or candidate.reservation_key == &"":
+		return null
+	for slot: Marker3D in get_cover_slots():
+		if not slot.is_queued_for_deletion() and _get_candidate_reservation_key(slot) == candidate.reservation_key:
+			return slot
+	return null
+
+## Read-only reservation lookup. Invalid occupants are treated as absent.
+func get_slot_occupant(slot: Marker3D) -> Unit:
+	if not is_instance_valid(slot):
+		return null
+	var occupant: Unit = _slot_occupants.get(_get_slot_key(slot)) as Unit
+	return occupant if is_instance_valid(occupant) else null
+
+## Reserve exactly the evaluated slot, never fall back to a nearer Marker.
+## Recheck after evaluation so a competing reservation cannot steal this slot.
+func reserve_candidate(unit: Unit, candidate: CoverCandidate) -> Marker3D:
+	if not is_instance_valid(unit) or candidate == null or not candidate.is_valid_candidate() or not candidate.position.is_finite():
+		return null
+	var slot: Marker3D = get_candidate_slot(candidate)
+	if slot == null or not slot.global_position.is_equal_approx(candidate.position):
+		return null
+	var occupant: Unit = get_slot_occupant(slot)
+	if occupant != null and occupant != unit:
+		return null
+	if occupant == unit:
+		return slot
+	if is_slot_blocked(slot):
+		return null
+	if unit.reserved_cover != null or unit.current_cover != null:
+		unit.clear_cover()
+	_slot_occupants[_get_slot_key(slot)] = unit
+	unit.reserved_cover = self
+	unit.reserved_cover_slot = slot
+	return slot
+
+func _get_candidate_reservation_key(slot: Marker3D) -> StringName:
+	return StringName("%d:%s" % [get_instance_id(), get_path_to(slot)])
 
 func is_slot_blocked(slot: Marker3D) -> bool:
 	if not slot_blocked_check_enabled or slot == null:

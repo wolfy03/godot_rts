@@ -11,6 +11,7 @@ const ID = "TAKE_COVER_STATE"
 var _cover: Cover
 var _cover_position: Vector3
 var _cover_slot: Marker3D
+var _candidate: CoverCandidate
 var _route_waypoint: Vector3 = Vector3.INF
 var _last_sample_position: Vector3 = Vector3.INF
 var _stuck_sample_timer := 0.0
@@ -26,24 +27,25 @@ func _activate(data) -> void:
 
 	_unit.movement_enabled = true
 
-	_cover = data as Cover
+	_candidate = data.candidate if data is CoverCommandData else data as CoverCandidate
+	_cover = _candidate.get_source() as Cover if _candidate != null else data as Cover
 	_cover_slot = null
 	if _cover == null:
 		_deactivate()
 		transition_to_state.emit(IdleState.ID, null)
 		return
 
-	if _unit.current_cover != null and _unit.current_cover != _cover:
+	if _candidate == null and _unit.current_cover != null and _unit.current_cover != _cover:
 		_unit.clear_cover()
 
-	_cover_slot = _cover.reserve_slot(_unit)
+	_cover_slot = _cover.reserve_candidate(_unit, _candidate) if _candidate != null else _cover.reserve_slot(_unit)
 	if _cover_slot == null:
 		_unit.clear_cover()
 		_deactivate()
 		transition_to_state.emit(IdleState.ID, null)
 		return
 
-	_cover_position = _cover_slot.global_position
+	_cover_position = _candidate.position if _candidate != null else _cover_slot.global_position
 	_route_waypoint = _cover.get_navigation_route_waypoint(_unit.global_position, _cover_position)
 	_reset_stuck_tracking()
 	_update_navigation_target()
@@ -139,6 +141,13 @@ func _process_stuck_near_cover(delta: float) -> bool:
 	return _switch_to_alternate_cover()
 
 func _switch_to_alternate_cover() -> bool:
+	if _candidate != null:
+		# A tactical command must not silently choose a target-independent Cover.
+		# Release it for a fresh AI decision instead of picking another Cover here.
+		_unit.clear_cover()
+		_deactivate()
+		transition_to_state.emit(IdleState.ID, null)
+		return true
 	var stuck_cover := _cover
 	var alternate_cover := _unit.find_nearest_cover_to(_unit.global_position, _unit.auto_cover_search_radius, stuck_cover)
 	if alternate_cover == null:
@@ -154,6 +163,12 @@ func _get_horizontal_distance(from: Vector3, to: Vector3) -> float:
 	var flat_from := Vector2(from.x, from.z)
 	var flat_to := Vector2(to.x, to.z)
 	return flat_from.distance_to(flat_to)
+
+class CoverCommandData:
+	var candidate: CoverCandidate
+
+	func _init(selected_candidate: CoverCandidate = null) -> void:
+		candidate = selected_candidate
 
 func _on_enemy_detection_area_body_entered(_body: Node3D) -> void:
 	if _is_active and _unit.ai_brain != null:

@@ -672,7 +672,7 @@ func _get_visible_aim_points(target: Unit) -> Array[AimPointData]:
 	var muzzle_position := get_muzzle_position()
 	for marker in target.get_aim_points():
 		var point_name := StringName(marker.name)
-		var weight := float(AIM_POINT_WEIGHTS.get(point_name, 0.0))
+		var weight: float = target.get_aim_point_weight(point_name)
 		if weight <= 0.0:
 			continue
 		if _has_clear_ranged_aim_to(muzzle_position, marker.global_position, target):
@@ -692,6 +692,10 @@ func get_aim_points() -> Array[Marker3D]:
 
 func get_muzzle_position() -> Vector3:
 	return global_position + Vector3.UP * MUZZLE_HEIGHT
+
+## Single weight definition shared by ranged attacks and tactical evaluation.
+func get_aim_point_weight(point_name: StringName) -> float:
+	return float(AIM_POINT_WEIGHTS.get(point_name, 0.0))
 
 func _spawn_weapon_projectiles(muzzle_position: Vector3, base_direction: Vector3, attack_data: AttackData) -> int:
 	if equipped_weapon == null or equipped_weapon.projectile_scene == null:
@@ -714,6 +718,12 @@ func _spawn_weapon_projectiles(muzzle_position: Vector3, base_direction: Vector3
 	return fired_count
 
 func _has_clear_ranged_aim_to(from: Vector3, to: Vector3, target: Unit) -> bool:
+	return has_clear_ranged_aim_to(from, to, target)
+
+## Geometry visibility only, also usable from a virtual firing origin.
+## Both real units are excluded, including the target's current body when its
+## virtual AimPoints are elsewhere. Range/FOV/spread remain attack concerns.
+func has_clear_ranged_aim_to(from: Vector3, to: Vector3, target: Unit) -> bool:
 	if ranged_aim_obstacle_mask == 0:
 		return true
 	var world := get_world_3d()
@@ -1381,6 +1391,21 @@ func _remove_cover_effect() -> void:
 
 func find_nearest_cover(radius: float) -> Cover:
 	return find_nearest_cover_to(global_position, radius)
+
+## Temporary legacy query boundary; CoverSystem will replace collection later.
+## Availability and tactical quality belong to the evaluator, not this query.
+func get_legacy_cover_candidates_nearby(radius: float) -> Array[CoverCandidate]:
+	var candidates: Array[CoverCandidate] = []
+	if radius <= 0.0 or not is_inside_tree():
+		return candidates
+	for node: Node in get_tree().get_nodes_in_group("covers"):
+		var cover: Cover = node as Cover
+		if not is_instance_valid(cover) or cover.is_queued_for_deletion():
+			continue
+		for candidate: CoverCandidate in cover.get_cover_candidates():
+			if global_position.distance_squared_to(candidate.position) <= radius * radius:
+				candidates.append(candidate)
+	return candidates
 
 func find_nearest_cover_to(pos: Vector3, radius: float, excluded_cover: Cover = null) -> Cover:
 	var covers = get_tree().get_nodes_in_group("covers")
