@@ -4,11 +4,12 @@
 Cover sources and returns world-position candidate snapshots. It also owns the
 runtime key reservation registry. Spatial queries do not test availability or
 know Unit/threat context. The system does not score candidates, raycast, reserve
-legacy slots, query navigation or change states.
+legacy slots or change states. Runtime generation uses the world's Navigation map
+only to project positions; tactical/navigation preflight stays outside the query.
 
 ```text
 Unit position + radius -> CoverSystem.query_candidates()
-                      -> registered Cover adapters -> candidate radius filter
+                      -> legacy adapters + runtime revision cache -> radius filter
                       -> Array[CoverCandidate]
 AIBrain -> CoverEvaluator.find_best_candidate() -> TakeCoverState
 ```
@@ -17,7 +18,7 @@ AIBrain -> CoverEvaluator.find_best_candidate() -> TakeCoverState
 
 The main combat scene `scenes/levels/test_level/test_level.tscn` owns a CoverSystem
 after its authored Cover nodes. On ready it joins `cover_system` and scans the
-legacy `covers` group once, registering live sources in its own World3D. Place
+legacy `covers` and `runtime_cover_sources` groups once, registering live sources in its own World3D. Place
 the system after authored Covers so their ready-time group membership already
 exists. AI resolves the service lazily, after level setup, and caches it.
 
@@ -27,6 +28,7 @@ tree; spawning a node into the legacy group alone does not register it:
 ```gdscript
 world_geometry.add_child(new_cover)
 cover_system.register_cover_source(new_cover)
+cover_system.register_runtime_cover_source(new_runtime_source)
 ```
 
 `unregister_cover_source(cover)` removes it from query results without deleting
@@ -47,7 +49,10 @@ world coordinates. Nonfinite origin/radius or nonpositive radius returns an empt
 array. Sources are sorted by runtime instance ID and retain authored slot order,
 so equal-score evaluations have stable input order within the running scene.
 
-Each source creates fresh snapshots via `get_cover_candidates()`. Filtering uses
+Legacy sources create fresh snapshots via `get_cover_candidates()`. Runtime sources
+reuse generated snapshots at the same explicit source revision; revision changes
+invalidate old objects and generate new ones. See [Runtime generation](runtime_cover_generation.md).
+Filtering uses
 squared 3D distance to each candidate. A strict Cover-center filter is deliberately
 omitted: a large source can have an in-radius slot far from its origin. Query cost
 is currently proportional to registered sources and authored slots.
@@ -56,11 +61,13 @@ Reserved, occupied and blocked candidates remain in the query. CoverEvaluator
 handles combat eligibility; AIBrain's idle compatibility helper checks availability
 without a threat or protection score. Moving/deleting a Marker changes subsequent
 queries without mutating old snapshots. Existing evaluator checks for stale slots,
-missing slots and freed sources remain unchanged. No candidate cache is retained.
+missing slots and freed sources remain unchanged. Legacy/runtime IDs are sorted
+separately, with legacy candidates first. Returned arrays do not expose cache arrays.
 
 `get_debug_snapshot()` reports `registered_source_count`,
 `last_query_source_count`, `last_query_candidate_count` and
-`runtime_reservation_count` (after pruning stale owners).
+`runtime_reservation_count` (after pruning stale owners), `runtime_source_count`
+and `runtime_cached_candidate_count`.
 
 ## AI compatibility
 
@@ -80,12 +87,14 @@ use the bounded retry. Debug logging is off by default and logs once per missing
 period rather than on every retry. Prototype policy remains one service per world.
 
 Combat queries feed CoverEvaluator's threat protection, improvement and score.
+AIBrain prefilters runtime ownership before evaluation; legacy eligibility remains
+in the evaluator. Spatial queries themselves still include reserved runtime keys.
 No-threat idle queries use `auto_cover_search_radius` (default 5m), filter currently
 executable candidates, then choose the nearest candidate world position
 by squared 3D distance. Availability requires a live same-world Cover, its exact
 live slot at the snapshot position, no other reservation/occupant, and no blocker.
 For non-Cover candidates it uses the same-world system's read-only runtime
-availability API. Query still produces legacy candidates only at this stage.
+availability API. Queries now include Box-generated runtime candidates.
 The helper performs no reservation. Ties retain query order. Both service-backed
 and no-service idle paths pass the exact CoverCandidate command to TakeCoverState.
 `Unit.get_auto_cover()` and nearest-Cover APIs remain public legacy compatibility
@@ -101,6 +110,7 @@ stuck behavior are described in [Runtime execution](runtime_cover_execution.md).
 godot --headless --path . res://tests/cover_system_test.tscn
 godot --headless --path . res://tests/cover_evaluator_test.tscn
 godot --headless --path . res://tests/runtime_cover_execution_test.tscn
+godot --headless --path . res://tests/runtime_cover_generator_test.tscn
 ```
 
 Tests cover bootstrap, runtime/duplicate registration, radius queries including
@@ -122,27 +132,26 @@ for ownership, cleanup and immutable snapshot requirements.
 
 | Capability | Current status |
 | --- | --- |
-| Runtime geometry generation | Not implemented |
-| Query | Stable API prepared; currently emits legacy snapshots only |
+| Runtime geometry generation | BoxShape3D source sampling and Navigation projection |
+| Query | Legacy snapshots plus revision-cached runtime snapshots |
 | Evaluation | Source-less candidates supported |
-| Selection | Supplied runtime data can be evaluated/selected; no runtime producer yet |
+| Selection | Generated runtime data used by combat and idle AI |
 | Reservation | Cover exact slots or CoverSystem runtime keys |
 | Cover movement | Legacy route helper or runtime final target |
 | Occupation | Separate legacy Cover and runtime candidate Unit state |
 
-The execution boundary now supports this path; runtime query production comes next:
+The spatial query and execution boundary now support this path:
 
 ```text
-Runtime candidate -> CoverSystem query -> CoverEvaluator -> AIBrain
+RuntimeCoverSource -> generator/cache -> CoverSystem query -> CoverEvaluator -> AIBrain
                   -> Cover or CoverSystem reservation -> TakeCoverState
 ```
 
 Keep `query_candidates(origin, radius)` stable while adding legacy sources plus
-future runtime producers/cache inside the system. No general ReservationProvider
-interface or runtime candidate storage/cache is implemented here.
+additional runtime producers inside the system. The current cache is source-revision
+based; no general ReservationProvider interface or spatial index is implemented.
 
-Production queries still emit only legacy Marker candidates; runtime test snapshots
-are manually constructed. Runtime geometry sampling, candidate caches, spatial
-indexes, destruction revisions, multi-threat evaluation and suppression remain
-outside this stage. Navigation production code is unchanged. The stable spatial
-query boundary can merge future producers without changing the AI query signature.
+Runtime Box generation and source caches are covered by real combat E2E tests.
+Automatic destruction revisions, coordinated active invalidation, Navigation
+topology revision tracking, spatial indexes, multi-threat evaluation and suppression
+remain outside this stage. Navigation production code is unchanged.

@@ -1181,6 +1181,18 @@ func get_runtime_cover_system() -> CoverSystem:
 		return null
 	return system
 
+func has_live_runtime_cover_source() -> bool:
+	var candidate: CoverCandidate = reserved_cover_candidate
+	if candidate == null:
+		return false
+	if candidate.source_instance_id == 0:
+		return true
+	var source: Node3D = candidate.get_source()
+	# Source removal is a lifetime failure. Revision/valid changes alone do not
+	# force an already executing snapshot out of cover in this stage.
+	return is_instance_valid(source) and source.is_inside_tree() and not source.is_queued_for_deletion() \
+		and source.get_world_3d() == get_world_3d()
+
 func is_in_runtime_cover_candidate() -> bool:
 	var candidate: CoverCandidate = reserved_cover_candidate
 	if candidate == null or not candidate.position.is_finite():
@@ -1614,7 +1626,8 @@ func _physics_process(_delta: float) -> void:
 
 	if current_cover != null and not is_in_reserved_cover_slot():
 		clear_cover(false)
-	if current_cover_candidate != null and (not is_in_runtime_cover_candidate() or get_runtime_cover_system() == null):
+	if current_cover_candidate != null and (not is_in_runtime_cover_candidate() or get_runtime_cover_system() == null \
+			or not has_live_runtime_cover_source()):
 		clear_cover(false)
 
 	if !movement_enabled:

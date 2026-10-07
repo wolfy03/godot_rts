@@ -124,7 +124,12 @@ func _query_cover_candidates(radius: float) -> Array[CoverCandidate]:
 	var candidates: Array[CoverCandidate]
 	var cover_system: CoverSystem = _get_cover_system()
 	if cover_system != null:
-		candidates = cover_system.query_candidates(_unit.global_position, radius)
+		candidates = []
+		for candidate: CoverCandidate in cover_system.query_candidates(_unit.global_position, radius):
+			# Runtime availability is a cheap preflight, not a query filter or a
+			# reservation. Legacy eligibility remains entirely in the evaluator.
+			if candidate.get_source() is Cover or cover_system.is_candidate_available(_unit, candidate):
+				candidates.append(candidate)
 	else:
 		# Temporary compatibility fallback. Remove after every combat level owns
 		# a CoverSystem. An empty registry never falls back to the covers group.

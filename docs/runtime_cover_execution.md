@@ -1,9 +1,9 @@
 # Source-independent cover execution (Godot 4.6.2, Stage 2/1)
 
-Both authored and manually created runtime snapshots use the same `CoverCandidate`
-or `TakeCoverState.CoverCommandData` command. No geometry sampling or runtime
-candidate query storage is introduced. CoverSystem queries still emit authored
-Marker snapshots; runtime tests supply data directly to the command/evaluator.
+Authored, manually created and Box-generated runtime snapshots use the same
+`CoverCandidate` or `TakeCoverState.CoverCommandData` command. The Stage 2/1 manual
+execution tests remain; Stage 2/2 adds [Runtime generation](runtime_cover_generation.md)
+and query caches with real geometry/AI end-to-end tests.
 
 ## Reservation backends
 
@@ -18,7 +18,9 @@ retry. Unit keeps a WeakRef to the acquiring backend so release never goes to a
 new replacement service. Missing, detached, queued or foreign-world backends fail
 the active travel command and clear its target. Runtime sources, when bound, must
 be alive, in-tree, nonqueued and in the same World3D at acquisition. A previously
-bound freed source cannot be reinterpreted as source-less.
+bound freed source cannot be reinterpreted as source-less. Execution/occupied
+state also clears on bound-source lifetime loss. Revision-only invalidation of
+an already executing candidate does not force release in this stage.
 
 `_runtime_reservations: Dictionary[StringName, WeakRef]` maps a key to a Unit.
 `reserve_candidate(unit, candidate)` requires a live same-world Unit, valid finite
@@ -38,9 +40,10 @@ Keys identify logical locations, not world coordinates. Test producers use names
 such as `runtime:arrival`; identical keys compete even in distinct snapshot
 objects with different positions. Different keys at the same position are not
 spatially deduplicated. Keys are not save-game, multiplayer or cross-level IDs.
-Stage 2/1 runtime test candidates are immutable snapshots. Do not change source,
-key or position during execution. Same-key relocation, revision/invalidation and stale
-runtime snapshot recovery arrive later.
+All runtime candidates are immutable snapshots. Do not change source, key,
+position or source_revision during execution. Generation cache invalidation may
+only set valid=false; keys of new revisions identify fresh snapshots. Coordinated
+active snapshot invalidation/recovery arrives in Stage 2/3.
 
 ## Unit state and lifecycle
 
@@ -68,9 +71,9 @@ command callers should use TakeCoverState/Unit helpers.
 `is_cover_travel_in_progress()` recognizes both backends, so AIBrain decisions
 cannot replace a selected runtime move before arrival. `should_auto_take_cover()`
 also checks both reserved/current runtime fields. Idle availability can check
-runtime keys if future query producers supply them; it still performs no scoring
-or acquisition. Combat evaluator policy is unchanged, with acquisition resolving
-any runtime ownership race.
+generated runtime keys; it still performs no scoring or acquisition. AIBrain
+prefilters other runtime owners before combat evaluation, with acquisition
+resolving any later ownership race. Geometry scoring policy is unchanged.
 
 ## Movement, arrival and failure
 
@@ -108,7 +111,7 @@ loss/missing service, same-state backend switching and exact legacy slots. Real
 NavigationAgent movement reaches/occupies runtime snapshots with avoidance off
 and on.
 
-The next stage may add a runtime geometry producer behind the existing spatial
-query API. Geometry sampling, candidate cache, spatial indexing, destruction
-revisions, physical stance/AimPoint changes, multi-threat scoring, suppression,
-Utility AI and network authority remain unimplemented.
+Box generation and revision caches now sit behind the spatial query API.
+Automatic destruction revisions, active invalidation, Navigation topology revision
+tracking, spatial indexing, physical stance/AimPoint changes, multi-threat scoring,
+suppression, Utility AI and network authority remain unimplemented.

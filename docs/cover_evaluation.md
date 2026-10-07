@@ -39,7 +39,10 @@ Reasons include `invalid_candidate`, `invalid_source`, `non_finite_position`,
 `invalid_context` in both APIs. An empty batch with valid context returns
 `no_valid_candidate` without exposure rays. Valid results without protective improvement return
 `no_improving_candidate`. A source-less candidate is allowed; a previously bound,
-freed source is rejected. This is not geometry revision/invalidation tracking.
+freed source is rejected. Automatic geometry change detection is not implemented.
+RuntimeCoverSource snapshots with a different source_revision also reject as
+`stale_source_revision`, even before cache invalidation. Legacy revisions are not
+checked. See [Runtime generation](runtime_cover_generation.md) for cache policy.
 
 ## Visibility and scoring
 
@@ -109,8 +112,9 @@ source. `reserve_candidate()` rechecks that exact slot, position and availabilit
 at activation, preserving Marker-based ownership. It never substitutes a nearer
 slot after a reservation race. Source-less and live non-Cover candidates execute
 through the CoverSystem key backend and a direct final target. Runtime reservation
-competition is rechecked at activation; geometry scoring remains unchanged and
-does not currently query the runtime registry. See [Runtime execution](runtime_cover_execution.md)
+competition is rechecked at activation. AIBrain prefilters non-Cover runtime
+availability before evaluation; the evaluator does not query the runtime registry.
+Geometry scoring remains unchanged. See [Runtime execution](runtime_cover_execution.md)
 and [the capability matrix](cover_system.md#stage-2-execution-contract).
 `TakeCoverState` accepts a Cover, a candidate,
 or `CoverCommandData(candidate)`. Candidate commands move toward the snapshot
@@ -136,9 +140,9 @@ travel and resumed combat after arrival, and stuck handling near a slot far from
 its Cover origin. Existing candidate, direction, aim point and navigation tests
 remain.
 
-Production collection still uses authored Marker candidates; no runtime sampling,
-candidate cache, destruction invalidation, suppression, multi-threat
-scoring, or squad allocation exists yet. Current pose is preserved: CROUCHING
+Production collection merges authored Markers and Box-generated revision-cached
+runtime candidates. Automatic destruction/active invalidation, suppression,
+multi-threat scoring, or squad allocation do not exist yet. Current pose is preserved: CROUCHING
 metadata does not lower AimPoints or alter animation. Legacy slot heights can
 therefore leave a low wall physically unprotective, despite its direction and
 CoverGrade. Legacy grade-based gameplay buffs remain unchanged.

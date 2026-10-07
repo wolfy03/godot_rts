@@ -17,7 +17,7 @@ var source: Node3D:
 
 ## Runtime identity retained after source deletion; not a persistent save-game ID.
 var source_instance_id: int = 0
-## Reserved for future geometry revisions; no revision tracking in this adapter.
+## Runtime source generation revision; the legacy Marker adapter stays at zero.
 var source_revision: int = 0
 
 var stance: CoverStance.Type = CoverStance.Type.UNKNOWN
@@ -26,10 +26,11 @@ var stance: CoverStance.Type = CoverStance.Type.UNKNOWN
 ## Slot deletion/movement does not update this snapshot or invalidate it yet.
 var valid: bool = true
 
-## Opaque runtime reservation identity. Producers may later use candidate IDs or
-## quantized positions; consumers must not interpret this as a Marker node path.
+## Opaque runtime reservation identity assigned by the producer, independent of
+## world position; consumers must not interpret this as a Marker node path.
 ## Nonempty keys are required for runtime execution and are authoritative over
-## position. Stage 2/1 runtime test candidates are immutable snapshots.
+## position. Source/key/position/revision are immutable once published; cache
+## invalidation may only change valid to false.
 var reservation_key: StringName = &""
 
 func get_source() -> Node3D:

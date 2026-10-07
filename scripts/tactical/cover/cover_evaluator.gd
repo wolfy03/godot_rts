@@ -53,6 +53,8 @@ func _evaluate_candidate(unit: Unit, candidate: CoverCandidate, threat: Unit,
 	var source: Node3D = candidate.get_source()
 	if source != null and (source.is_queued_for_deletion() or not source.is_inside_tree()):
 		return _reject(result, &"invalid_source")
+	if source is RuntimeCoverSource and candidate.source_revision != source.source_revision:
+		return _reject(result, &"stale_source_revision")
 	if not _has_valid_context(unit, threat):
 		return _reject(result, &"invalid_context")
 	result.travel_distance = unit.global_position.distance_to(candidate.position)

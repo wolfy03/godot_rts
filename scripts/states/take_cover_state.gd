@@ -145,7 +145,7 @@ func _resolve_runtime_cover_system() -> CoverSystem:
 
 func _process_runtime_candidate(delta: float) -> void:
 	var system: CoverSystem = _unit.get_runtime_cover_system()
-	if system == null or _unit.reserved_cover_candidate != _candidate \
+	if system == null or _unit.reserved_cover_candidate != _candidate or not _unit.has_live_runtime_cover_source() \
 			or system.get_runtime_candidate_occupant(_candidate) != _unit:
 		_fail_cover_command()
 		return
