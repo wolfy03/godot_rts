@@ -135,6 +135,11 @@ var _queued_skill_target_ref: WeakRef
 var reserved_cover: Cover = null
 var reserved_cover_slot: Marker3D = null
 var current_cover: Cover = null
+var reserved_cover_candidate: CoverCandidate = null
+var current_cover_candidate: CoverCandidate = null
+## Remember the acquiring backend, so clear/death/command cancellation never
+## release against a replacement service or perform a new SceneTree lookup.
+var _runtime_cover_system_ref: WeakRef = null
 
 func _ready():
 	add_to_group("units")
@@ -437,6 +442,8 @@ func issue_skill_command(skill_id: StringName, target_unit: Unit = null, target_
 	return true
 
 func begin_player_command(command_mode: PlayerCommandMode) -> void:
+	if command_mode != PlayerCommandMode.NONE and reserved_cover_candidate != null:
+		clear_cover()
 	_player_command_mode = command_mode
 
 func finish_player_command(command_mode: PlayerCommandMode) -> void:
@@ -1148,7 +1155,69 @@ func is_in_reserved_cover_slot() -> bool:
 	return from.distance_to(to) <= cover_slot_hold_radius
 
 func should_auto_take_cover() -> bool:
-	return not blocks_auto_cover() and current_cover == null and reserved_cover == null
+	return not blocks_auto_cover() and current_cover == null and reserved_cover == null \
+		and reserved_cover_candidate == null and current_cover_candidate == null
+
+func is_cover_travel_in_progress() -> bool:
+	return (reserved_cover != null and current_cover == null) \
+		or (reserved_cover_candidate != null and current_cover_candidate == null)
+
+func reserve_runtime_cover_candidate(candidate: CoverCandidate, system: CoverSystem) -> bool:
+	if not is_instance_valid(system) or not system.is_candidate_available(self, candidate):
+		return false
+	# Recheck acquisition after clearing any previous target. The backend's key
+	# ownership check is authoritative; no alternate candidate is selected here.
+	clear_cover()
+	if not system.reserve_candidate(self, candidate):
+		return false
+	_runtime_cover_system_ref = weakref(system)
+	reserved_cover_candidate = candidate
+	return true
+
+func get_runtime_cover_system() -> CoverSystem:
+	var system: CoverSystem = _runtime_cover_system_ref.get_ref() as CoverSystem if _runtime_cover_system_ref != null else null
+	if not is_instance_valid(system) or not system.is_inside_tree() or system.is_queued_for_deletion() \
+			or not is_inside_tree() or system.get_world_3d() != get_world_3d():
+		return null
+	return system
+
+func is_in_runtime_cover_candidate() -> bool:
+	var candidate: CoverCandidate = reserved_cover_candidate
+	if candidate == null or not candidate.position.is_finite():
+		return false
+	var horizontal_distance: float = Vector2(global_position.x, global_position.z).distance_to(
+		Vector2(candidate.position.x, candidate.position.z))
+	var height_tolerance: float = maxf(navigation_agent.height, 0.1) if navigation_agent != null else 1.0
+	return horizontal_distance <= cover_slot_hold_radius and absf(global_position.y - candidate.position.y) <= height_tolerance
+
+func occupy_runtime_cover_candidate() -> void:
+	var system: CoverSystem = get_runtime_cover_system()
+	if system == null or system.get_runtime_candidate_occupant(reserved_cover_candidate) != self \
+			or not is_in_runtime_cover_candidate():
+		return
+	current_cover_candidate = reserved_cover_candidate
+	movement_enabled = false
+	velocity = Vector3.ZERO
+	if navigation_agent != null:
+		navigation_agent.velocity = Vector3.ZERO
+	# Geometry quality does not imply any legacy CoverGrade gameplay buff.
+	_remove_cover_effect()
+	update_cover_indicator()
+
+func clear_runtime_cover_candidate(restore_movement: bool = true) -> void:
+	# Do not resolve here: even a detached/queued backend can release its record.
+	var system: CoverSystem = _runtime_cover_system_ref.get_ref() as CoverSystem if _runtime_cover_system_ref != null else null
+	var candidate: CoverCandidate = reserved_cover_candidate if reserved_cover_candidate != null else current_cover_candidate
+	if is_instance_valid(system) and candidate != null:
+		system.release_candidate(self, candidate)
+	reserved_cover_candidate = null
+	current_cover_candidate = null
+	_runtime_cover_system_ref = null
+	if restore_movement:
+		movement_enabled = true
+
+func _exit_tree() -> void:
+	clear_runtime_cover_candidate(false)
 
 ## Legacy compatibility path for callers that still issue a whole Cover command.
 ## Production AI selects exact candidates via its CoverSystem query boundary.
@@ -1351,11 +1420,12 @@ func _get_overhead_health_bar_color(percent: float) -> Color:
 	return Color(0.16, 0.95, 0.28, 0.95)
 
 func clear_cover(restore_movement: bool = true) -> void:
+	clear_runtime_cover_candidate(restore_movement)
 	var cover_to_release := reserved_cover
 	if cover_to_release == null:
 		cover_to_release = current_cover
 
-	if cover_to_release != null:
+	if is_instance_valid(cover_to_release):
 		cover_to_release.release_slot(self)
 
 	_remove_cover_effect()
@@ -1543,6 +1613,8 @@ func _physics_process(_delta: float) -> void:
 		_update_status_indicator_space_position()
 
 	if current_cover != null and not is_in_reserved_cover_slot():
+		clear_cover(false)
+	if current_cover_candidate != null and (not is_in_runtime_cover_candidate() or get_runtime_cover_system() == null):
 		clear_cover(false)
 
 	if !movement_enabled:

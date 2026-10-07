@@ -1,9 +1,10 @@
 # Level-local cover queries (Godot 4.6.2)
 
 `CoverSystem` is a Node3D owned by the combat level, not an autoload. It registers
-Cover sources and returns world-position candidate snapshots. It does not know
-Unit/threat context, score candidates, test availability, raycast, reserve slots,
-query navigation or change states.
+Cover sources and returns world-position candidate snapshots. It also owns the
+runtime key reservation registry. Spatial queries do not test availability or
+know Unit/threat context. The system does not score candidates, raycast, reserve
+legacy slots, query navigation or change states.
 
 ```text
 Unit position + radius -> CoverSystem.query_candidates()
@@ -58,7 +59,8 @@ queries without mutating old snapshots. Existing evaluator checks for stale slot
 missing slots and freed sources remain unchanged. No candidate cache is retained.
 
 `get_debug_snapshot()` reports `registered_source_count`,
-`last_query_source_count` and `last_query_candidate_count`.
+`last_query_source_count`, `last_query_candidate_count` and
+`runtime_reservation_count` (after pruning stale owners).
 
 ## AI compatibility
 
@@ -79,23 +81,26 @@ period rather than on every retry. Prototype policy remains one service per worl
 
 Combat queries feed CoverEvaluator's threat protection, improvement and score.
 No-threat idle queries use `auto_cover_search_radius` (default 5m), filter currently
-executable legacy candidates, then choose the nearest candidate world position
+executable candidates, then choose the nearest candidate world position
 by squared 3D distance. Availability requires a live same-world Cover, its exact
 live slot at the snapshot position, no other reservation/occupant, and no blocker.
+For non-Cover candidates it uses the same-world system's read-only runtime
+availability API. Query still produces legacy candidates only at this stage.
 The helper performs no reservation. Ties retain query order. Both service-backed
 and no-service idle paths pass the exact CoverCandidate command to TakeCoverState.
 `Unit.get_auto_cover()` and nearest-Cover APIs remain public legacy compatibility
 paths, but production idle AI no longer calls them.
 
-TakeCoverState still executes through the exact legacy slot reservation adapter.
-Its candidate input, travel guard, arrival callback, reservation race handling
-and candidate-position stuck behavior are preserved.
+TakeCoverState supports both exact legacy slots and runtime key reservations.
+Its source-independent travel guard, arrival callback and candidate-position
+stuck behavior are described in [Runtime execution](runtime_cover_execution.md).
 
 ## Verification and limits
 
 ```powershell
 godot --headless --path . res://tests/cover_system_test.tscn
 godot --headless --path . res://tests/cover_evaluator_test.tscn
+godot --headless --path . res://tests/runtime_cover_execution_test.tscn
 ```
 
 Tests cover bootstrap, runtime/duplicate registration, radius queries including
@@ -106,40 +111,38 @@ missing-service fallback, late discovery and replacement, bounded retry, detache
 and queued services, and cached World3D changes. Retry tests manipulate deadlines
 deterministically instead of waiting real seconds.
 
-## Stage 2 execution constraint
+## Stage 2 execution contract
 
-CoverCandidate allows source-less data, and CoverEvaluator can evaluate and choose
-it when supplied. This does not imply that it can execute. TakeCoverState currently
-casts the source to legacy Cover, then relies on its Marker reservation and route
-helpers plus Unit's legacy occupancy state. It cannot reserve, move to or occupy
-a source-less/runtime candidate through a cover command. Idle explicitly excludes
-such candidates until this execution path exists.
+CoverCandidate permits source-less data or a live non-Cover source. Such candidates
+can now execute through TakeCoverState using CoverSystem's runtime reservation
+backend, one final NavigationAgent target and Unit's separate runtime occupancy
+state. A nonempty reservation key is required. Candidates from Cover keep their
+existing Marker reservation backend. See [Runtime execution](runtime_cover_execution.md)
+for ownership, cleanup and immutable snapshot requirements.
 
 | Capability | Current status |
 | --- | --- |
 | Runtime geometry generation | Not implemented |
 | Query | Stable API prepared; currently emits legacy snapshots only |
 | Evaluation | Source-less candidates supported |
-| Selection | Combat result selection supported when supplied; idle legacy only |
-| Reservation | Legacy Cover only |
-| Cover movement | Legacy Cover only |
-| Occupation | Legacy Cover only |
+| Selection | Supplied runtime data can be evaluated/selected; no runtime producer yet |
+| Reservation | Cover exact slots or CoverSystem runtime keys |
+| Cover movement | Legacy route helper or runtime final target |
+| Occupation | Separate legacy Cover and runtime candidate Unit state |
 
-Stage 2 must support this conceptual path:
+The execution boundary now supports this path; runtime query production comes next:
 
 ```text
 Runtime candidate -> CoverSystem query -> CoverEvaluator -> AIBrain
-                  -> reservation provider -> TakeCoverState
+                  -> Cover or CoverSystem reservation -> TakeCoverState
 ```
 
 Keep `query_candidates(origin, radius)` stable while adding legacy sources plus
-future runtime producers/cache inside the system. Decide the minimal
-source-independent reservation/execution interface after a real producer exists;
-no ReservationProvider, execution adapter or runtime registry is implemented here.
+future runtime producers/cache inside the system. No general ReservationProvider
+interface or runtime candidate storage/cache is implemented here.
 
-Only legacy Marker candidates exist. Runtime geometry sampling, candidate caches,
-spatial indexes, runtime reservation, source-independent TakeCover, destruction
-revisions, multi-threat evaluation and suppression
-remain outside this stage. Navigation code is unchanged. The stable spatial query
-boundary can later merge new producers without changing the AI query signature;
-runtime execution will also need a compatible reservation/source implementation.
+Production queries still emit only legacy Marker candidates; runtime test snapshots
+are manually constructed. Runtime geometry sampling, candidate caches, spatial
+indexes, destruction revisions, multi-threat evaluation and suppression remain
+outside this stage. Navigation production code is unchanged. The stable spatial
+query boundary can merge future producers without changing the AI query signature.

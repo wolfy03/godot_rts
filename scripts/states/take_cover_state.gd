@@ -12,6 +12,7 @@ var _cover: Cover
 var _cover_position: Vector3
 var _cover_slot: Marker3D
 var _candidate: CoverCandidate
+var _uses_runtime_reservation: bool = false
 var _route_waypoint: Vector3 = Vector3.INF
 var _last_sample_position: Vector3 = Vector3.INF
 var _stuck_sample_timer := 0.0
@@ -27,16 +28,37 @@ func _activate(data) -> void:
 
 	_unit.movement_enabled = true
 
+	# Same-state activation can replace a runtime command without _deactivate().
+	# Clear the old acquisition before switching reservation backends.
+	if _unit.reserved_cover_candidate != null:
+		_unit.clear_cover()
 	_candidate = data.candidate if data is CoverCommandData else data as CoverCandidate
-	# TODO RuntimeCover: Candidate commands currently require a legacy Cover for
-	# reservation and navigation-route execution. Stage 2 needs a source-independent
-	# reservation/execution path before generated/source-less candidates can run.
 	_cover = _candidate.get_source() as Cover if _candidate != null else data as Cover
 	_cover_slot = null
-	if _cover == null:
-		_deactivate()
-		transition_to_state.emit(IdleState.ID, null)
+	_route_waypoint = Vector3.INF
+	_uses_runtime_reservation = _candidate != null and _cover == null
+	if _uses_runtime_reservation:
+		_activate_runtime_candidate()
 		return
+	if not is_instance_valid(_cover):
+		_fail_cover_command()
+		return
+	_activate_legacy_cover()
+
+func _activate_runtime_candidate() -> void:
+	var system: CoverSystem = _resolve_runtime_cover_system()
+	if system == null or not _unit.reserve_runtime_cover_candidate(_candidate, system):
+		_fail_cover_command()
+		return
+	_cover_position = _candidate.position
+	# Runtime execution always submits one final target to NavigationAgent.
+	_route_waypoint = Vector3.INF
+	_reset_stuck_tracking()
+	_update_navigation_target()
+	if _unit.is_in_runtime_cover_candidate():
+		_unit.occupy_runtime_cover_candidate()
+
+func _activate_legacy_cover() -> void:
 
 	if _candidate == null and _unit.current_cover != null and _unit.current_cover != _cover:
 		_unit.clear_cover()
@@ -57,10 +79,19 @@ func _activate(data) -> void:
 		_unit.occupy_reserved_cover()
 
 func _deactivate() -> void:
+	# Occupied cover survives the arrival -> Attack handoff, just like legacy
+	# cover. Unit.clear_cover() owns release once the state is no longer active.
+	if _uses_runtime_reservation and is_instance_valid(_unit) \
+			and _unit.reserved_cover_candidate != null and _unit.current_cover_candidate == null:
+		_unit.clear_cover()
+		_stop_runtime_movement()
 	super._deactivate()
 
 func _process_state(_delta: float) -> void:
-	if _cover == null:
+	if _uses_runtime_reservation:
+		_process_runtime_candidate(_delta)
+		return
+	if not is_instance_valid(_cover):
 		_deactivate()
 		transition_to_state.emit(IdleState.ID, null)
 		return
@@ -103,6 +134,43 @@ func _process_state(_delta: float) -> void:
 	if _process_stuck_near_cover(_delta):
 		return
 
+func _resolve_runtime_cover_system() -> CoverSystem:
+	# Activation-only lookup; independent from AIBrain's retry/cache policy.
+	for node: Node in _unit.get_tree().get_nodes_in_group("cover_system"):
+		var system: CoverSystem = node as CoverSystem
+		if is_instance_valid(system) and system.is_inside_tree() and not system.is_queued_for_deletion() \
+				and system.get_world_3d() == _unit.get_world_3d():
+			return system
+	return null
+
+func _process_runtime_candidate(delta: float) -> void:
+	var system: CoverSystem = _unit.get_runtime_cover_system()
+	if system == null or _unit.reserved_cover_candidate != _candidate \
+			or system.get_runtime_candidate_occupant(_candidate) != _unit:
+		_fail_cover_command()
+		return
+	if _unit.is_in_runtime_cover_candidate():
+		if _unit.current_cover_candidate == null:
+			_unit.occupy_runtime_cover_candidate()
+			_unit.finish_player_command(Unit.PlayerCommandMode.MOVE)
+		if _unit.ai_brain != null:
+			_unit.ai_brain.request_decision()
+		return
+	_process_stuck_near_cover(delta)
+
+func _stop_runtime_movement() -> void:
+	_unit.velocity = Vector3.ZERO
+	if _unit.navigation_agent != null:
+		_unit.navigation_agent.velocity = Vector3.ZERO
+		_unit.navigation_agent.target_position = _unit.global_position
+
+func _fail_cover_command() -> void:
+	_unit.clear_cover()
+	if _uses_runtime_reservation:
+		_stop_runtime_movement()
+	_deactivate()
+	transition_to_state.emit(IdleState.ID, null)
+
 func _update_navigation_target() -> void:
 	if _unit.navigation_agent == null:
 		return
@@ -118,7 +186,8 @@ func _reset_stuck_tracking() -> void:
 	_stuck_timer = 0.0
 
 func _process_stuck_near_cover(delta: float) -> bool:
-	if _cover == null or _unit.is_in_reserved_cover_slot():
+	var arrived: bool = _unit.is_in_runtime_cover_candidate() if _uses_runtime_reservation else _unit.is_in_reserved_cover_slot()
+	if (not _uses_runtime_reservation and not is_instance_valid(_cover)) or arrived:
 		_reset_stuck_tracking()
 		return false
 	# The reserved destination can be far from a large Cover's origin. Route
@@ -149,9 +218,7 @@ func _switch_to_alternate_cover() -> bool:
 	if _candidate != null:
 		# A tactical command must not silently choose a target-independent Cover.
 		# Release it for a fresh AI decision instead of picking another Cover here.
-		_unit.clear_cover()
-		_deactivate()
-		transition_to_state.emit(IdleState.ID, null)
+		_fail_cover_command()
 		return true
 	var stuck_cover := _cover
 	var alternate_cover := _unit.find_nearest_cover_to(_unit.global_position, _unit.auto_cover_search_radius, stuck_cover)

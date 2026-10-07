@@ -28,6 +28,8 @@ var valid: bool = true
 
 ## Opaque runtime reservation identity. Producers may later use candidate IDs or
 ## quantized positions; consumers must not interpret this as a Marker node path.
+## Nonempty keys are required for runtime execution and are authoritative over
+## position. Stage 2/1 runtime test candidates are immutable snapshots.
 var reservation_key: StringName = &""
 
 func get_source() -> Node3D:

@@ -7,7 +7,7 @@ The combat path is:
 ```text
 AIBrain decision -> CoverSystem spatial query -> CoverEvaluator
                 -> CoverEvaluationResult -> CoverCommandData
-                -> TakeCoverState -> Cover exact legacy slot reservation
+                -> TakeCoverState -> Cover exact slots / CoverSystem runtime keys
 ```
 
 ## Inputs and result contract
@@ -93,26 +93,28 @@ and snapshot policy. Scenes without the service retain the temporary
 at a configurable interval (default 1s). Debug output is
 off unless `debug_cover_evaluation` is enabled. Attack/Chase no longer run their
 own per-frame nearest-cover selection. No-threat idle also queries CoverSystem,
-then chooses the nearest available legacy-executable candidate without invoking
+then chooses the nearest available executable candidate without invoking
 the threat-based evaluator. Both paths issue exact candidate commands;
 MoveState/player Cover input and legacy public queries remain compatible.
 
-While TakeCoverState has a reservation but no occupied `current_cover`,
+While TakeCoverState has a legacy or runtime reservation but no matching occupancy,
 `request_decision()` defers all autonomous decisions before healing, skills or
 combat can interrupt that move. This policy is independent of MoveState's
-`allow_move_interrupt`. Once arrival sets `current_cover`, TakeCoverState's AI
-callback can resume normal decisions, including AttackState.
+`allow_move_interrupt`. Once arrival sets `current_cover` or
+`current_cover_candidate`, TakeCoverState's AI callback can resume normal
+decisions, including AttackState.
 
 `Cover.get_candidate_slot()` resolves opaque reservation identity inside the
 source. `reserve_candidate()` rechecks that exact slot, position and availability
 at activation, preserving Marker-based ownership. It never substitutes a nearer
-slot after a reservation race. Source-less candidates can be evaluated/selected
-as data, but cannot yet execute: TakeCoverState requires a legacy Cover source for
-reservation, routing and occupancy. Stage 2 must introduce a source-independent
-reservation/execution path; see [the capability matrix](cover_system.md#stage-2-execution-constraint).
+slot after a reservation race. Source-less and live non-Cover candidates execute
+through the CoverSystem key backend and a direct final target. Runtime reservation
+competition is rechecked at activation; geometry scoring remains unchanged and
+does not currently query the runtime registry. See [Runtime execution](runtime_cover_execution.md)
+and [the capability matrix](cover_system.md#stage-2-execution-contract).
 `TakeCoverState` accepts a Cover, a candidate,
 or `CoverCommandData(candidate)`. Candidate commands move toward the snapshot
-position using the existing Cover route helper and occupancy behavior. Stuck
+position using the legacy Cover route helper or the runtime direct target. Stuck
 tracking measures horizontal distance to this final slot/candidate position,
 not to the Cover origin; remote route waypoints reset the tracking timer. If a
 candidate move gets stuck, it releases the command for AI re-evaluation instead

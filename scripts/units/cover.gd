@@ -30,6 +30,8 @@ func reserve_slot(unit: Unit) -> Marker3D:
 
 	_prune_invalid_occupants()
 
+	if unit.reserved_cover_candidate != null or unit.current_cover_candidate != null:
+		unit.clear_cover()
 	if unit.reserved_cover != null and unit.reserved_cover != self:
 		unit.clear_cover()
 
@@ -157,7 +159,8 @@ func reserve_candidate(unit: Unit, candidate: CoverCandidate) -> Marker3D:
 		return slot
 	if is_slot_blocked(slot):
 		return null
-	if unit.reserved_cover != null or unit.current_cover != null:
+	if unit.reserved_cover != null or unit.current_cover != null \
+			or unit.reserved_cover_candidate != null or unit.current_cover_candidate != null:
 		unit.clear_cover()
 	_slot_occupants[_get_slot_key(slot)] = unit
 	unit.reserved_cover = self

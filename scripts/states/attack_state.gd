@@ -58,6 +58,8 @@ func _exit() -> void:
 
 	if _unit.current_cover != null:
 		transition_to_state.emit(TakeCoverState.ID, _unit.current_cover)
+	elif _unit.current_cover_candidate != null:
+		transition_to_state.emit(TakeCoverState.ID, _unit.current_cover_candidate)
 	elif _unit.hold_position_enabled:
 		transition_to_state.emit(HoldPositionState.ID, null)
 	elif _unit.last_move_command_data:
@@ -69,6 +71,8 @@ func _chase_or_hold_current_target() -> void:
 	_deactivate()
 	if _unit.current_cover != null:
 		transition_to_state.emit(TakeCoverState.ID, _unit.current_cover)
+	elif _unit.current_cover_candidate != null:
+		transition_to_state.emit(TakeCoverState.ID, _unit.current_cover_candidate)
 	elif _unit.hold_position_enabled:
 		transition_to_state.emit(HoldPositionState.ID, null)
 	else:

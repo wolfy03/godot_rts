@@ -48,7 +48,7 @@ func request_decision(allow_move_interrupt: bool = false) -> bool:
 	var current_state_id := _unit.state_machine.get_current_state_id()
 	# Preserve the selected reservation until arrival. Once occupied, cover's
 	# arrival callback may resume combat/healing/skill decisions normally.
-	if current_state_id == STATE_TAKE_COVER and _unit.reserved_cover != null and _unit.current_cover == null:
+	if current_state_id == STATE_TAKE_COVER and _unit.is_cover_travel_in_progress():
 		return false
 	if current_state_id == STATE_HOLD_POSITION:
 		return false
@@ -148,9 +148,10 @@ func _get_idle_cover_candidate() -> CoverCandidate:
 func _is_idle_candidate_available(candidate: CoverCandidate) -> bool:
 	if candidate == null or not candidate.is_valid_candidate() or not candidate.position.is_finite():
 		return false
-	# Temporary execution constraint: Stage 2 needs source-independent reservation
-	# before source-less/runtime candidates can participate in idle commands.
 	var cover: Cover = candidate.get_source() as Cover
+	if cover == null:
+		var system: CoverSystem = _get_cover_system()
+		return system != null and system.is_candidate_available(_unit, candidate)
 	if not is_instance_valid(cover) or not cover.is_inside_tree() or cover.is_queued_for_deletion() \
 			or cover.get_world_3d() != _unit.get_world_3d():
 		return false
